@@ -14,6 +14,7 @@ import LLVM.General.AST.Global
 import qualified LLVM.General.AST.Constant as C
 
 import qualified LLVM.General.AST.CallingConvention as CC
+import qualified LLVM.General.AST.FloatingPointPredicate as FP
 
 import qualified Data.Map as M
 import Data.Map ((!))
@@ -217,6 +218,8 @@ terminator trm = do
 br :: Name -> Codegen (Named Terminator)
 br val = terminator $ Do $ Br val []
 
+cbr :: Operand -> Name -> Name -> Codegen (Named Terminator)
+cbr cond tr fl = terminator $ Do $ CondBr cond tr fl []
 -- conditional jump
 condBr :: Operand -> Name -> Name -> Codegen (Named Terminator)
 condBr cond tr fl = terminator $ Do $ CondBr cond tr fl []
@@ -224,6 +227,12 @@ condBr cond tr fl = terminator $ Do $ CondBr cond tr fl []
 -- return
 ret :: Operand -> Codegen (Named Terminator)
 ret val = terminator . Do $ Ret (Just val) []
+
+fcmp :: FP.FloatingPointPredicate -> Operand -> Operand -> Codegen Operand
+fcmp cond a b = instr $ FCmp cond a b []
+
+phi :: Type -> [(Operand, Name)] -> Codegen Operand
+phi ty incoming = instr $ Phi ty incoming []
 
 call :: Operand -> [Operand] -> Codegen Operand
 call fun args = instr $ Call Nothing CC.C [] (Right fun) (toArgs args) [] []

@@ -6,6 +6,7 @@ import Control.Monad.Except
 import LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
 import qualified LLVM.General.AST.Float as F
+import qualified LLVM.General.AST.FloatingPointPredicate as FP
 
 import LLVM.General.Module
 import LLVM.General.Context
@@ -58,6 +59,29 @@ gen (S.Expr _ _ (S.BinExpr op l r)) = case M.lookup op binops of
       f clhs crhs
     Nothing -> error $ "No such operator '" ++ op ++ "'"
 
+gen (S.Expr _ _ (S.If cond tr fl)) = do
+  ifthen <- addBlock "if.then"
+  ifelse <- addBlock "if.else"
+  ifexit <- addBlock "if.exit"
+
+  cond <- gen cond
+  test <- fcmp FP.ONE (cons $ C.Float (F.Double 0.0)) cond
+  cbr test ifthen ifelse
+
+  setBlock ifthen
+  trval <- gen tr
+  br ifexit
+  ifthen <- getBlock
+
+  setBlock ifelse
+  flval <- gen fl
+  br ifexit
+  ifelse <- getBlock
+
+  setBlock ifexit
+  phi double [(trval, ifthen), (flval, ifelse)]
+
+gen ast = error $ "Not implement yet: \n" ++ show ast
 -- passes :: PassSetSpec
 -- passes = defaultCuratedPassSetSpec { optLevel = Just 3 }
 
