@@ -5,17 +5,21 @@ import Control.Monad.Except
 
 import LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
+import qualified LLVM.General.AST.Float as F
 
--- import LLVM.General.Prelude
--- import LLVM.General.Context
-import qualified Data.HashMap as M
+import LLVM.General.Module
+import LLVM.General.Context
+
+-- import LLVM.General.PassManager
+
+import qualified Data.Map as M
 
 import Geisha.Codegen.LLVM
 import Geisha.Codegen.Primitive
 import Geisha.AST as S
 
 topLevel :: AST -> LLVM ()
-topLevel (Expr _ _ (Define name (Lambda args body))) = define integer name fnargs bls
+topLevel (Expr _ _ (Define name (Expr _ _ (S.Function (Lambda args body))))) = define integer name fnargs bls
   where fnargs = toSig args
         bls = createBlocks . execCodegen $ do
           entry <- addBlock entryBlockName
@@ -24,13 +28,13 @@ topLevel (Expr _ _ (Define name (Lambda args body))) = define integer name fnarg
             var <- alloca integer
             store var . local $ AST.Name a
             assignVar a var
-          codegen body >> ret
+          gen body >>= ret
 
-topLevel (Expr _ _ exp) = define integer "main" [] blks
+topLevel prog = define integer "main" [] blks
   where blks = createBlocks $ execCodegen $ do
           entry <- addBlock entryBlockName
           setBlock entry
-          codegen exp >>= ret
+          gen prog >>= ret
 
 
 toSig :: [String] -> [(AST.Type, AST.Name)]
@@ -39,8 +43,8 @@ toSig = map $ \x -> (integer, AST.Name x)
 cons = ConstantOperand
 
 gen :: S.AST -> Codegen AST.Operand
-gen (S.Expr _ _ (S.Float f)) = return . cons $ C.Float f
-gen (S.Expr _ _ (S.Integer i)) = return . cons $ C.Int i
+gen (S.Expr _ _ (S.Float f)) = return . cons . C.Float $ F.Double f
+gen (S.Expr _ _ (S.Integer i)) = return . cons $ C.Int 32 i
 gen (S.Expr _ _ (S.Ident v)) = getVar v >>= load
 gen (S.Expr _ _ (S.Apply fn args)) = do
   largs <- mapM gen args
@@ -52,7 +56,12 @@ gen (S.Expr _ _ (S.BinExpr op l r)) = case M.lookup op binops of
       clhs <- gen l
       crhs <- gen r
       f clhs crhs
-    Nothing -> error "No such operator '" ++ op ++ "'"
+    Nothing -> error $ "No such operator '" ++ op ++ "'"
+
+-- passes :: PassSetSpec
+-- passes = defaultCuratedPassSetSpec { optLevel = Just 3 }
+
+
 
 liftError :: ExceptT String IO a -> IO a
 liftError = runExceptT >=> either fail return

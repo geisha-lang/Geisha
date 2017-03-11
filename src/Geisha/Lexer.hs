@@ -10,7 +10,7 @@ import qualified Text.Parsec.Token as Tok
 lexer :: Tok.TokenParser ()
 lexer = Tok.makeTokenParser defs
   where ops = [ "=", "*", "/", "%", "+", "-", ">", "<", "==", "&&", "||", "->" ]
-        keys = ["if", "let", "def", "true", "false", "in"]
+        keys = ["if", "else", "let", "def", "true", "false", "in"]
         defs = emptyDef {
                  Tok.commentLine = ";;",
                  Tok.reservedOpNames = ops,

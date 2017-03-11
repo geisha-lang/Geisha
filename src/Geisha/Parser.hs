@@ -54,7 +54,7 @@ prefix tk = E.Prefix $ do
 parseToAST parser = getPosition >>= \pos -> noType pos <$> parser
 
 
-factor = parseToAST (choice [ string, number, try bool,
+factor = parseToAST (choice [ ifelse, string, number, try bool,
                               identifier, list, try lambda,
                               block ]) <|> L.parens expr
 
@@ -67,8 +67,8 @@ factor' = do
         rest pos x = (do args <- L.parens $ L.commaSep expr
                          pos' <- getPosition
                          rest pos' . noType pos $ Apply x args) <|> return x
-    
-    
+
+
 string :: Parser Expr
 string = String <$> L.string
 
@@ -97,10 +97,19 @@ block = Block <$> L.braces (L.lineSep expr)
 
 lambda :: Parser Expr
 lambda = do
-  params <- L.parens . L.commaSep $ parseToAST identifier
+  params <- L.parens . L.commaSep $ L.identifier
   L.reservedOp "->"
   body <- expr
   return . Function $ Lambda params body
+
+ifelse :: Parser Expr
+ifelse = do
+  L.reserved "if"
+  cond <- L.parens expr
+  tr <- expr
+  L.reserved "else"
+  fl <- expr
+  return $ If cond tr fl
 
 assignment :: Parser (String, AST)
 assignment = do

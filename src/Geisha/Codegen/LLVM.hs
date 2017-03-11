@@ -15,8 +15,8 @@ import qualified LLVM.General.AST.Constant as C
 
 import qualified LLVM.General.AST.CallingConvention as CC
 
-import qualified Data.HashMap as M
-import Data.HashMap ((!))
+import qualified Data.Map as M
+import Data.Map ((!))
 
 import Geisha.AST as S (ASTType (..), PrimType (..))
 
@@ -83,7 +83,7 @@ integer = IntegerType 32
 -- function res args =  res args False
 
 -- bool :: Type
--- bool 
+-- bool
 
 convertType :: ASTType -> Type
 convertType (PrimType I32) = integer
@@ -108,7 +108,7 @@ define retty label argtys body = addDefn . GlobalDefinition $ functionDefaults {
 -- Blocks
 ---------------
 
-emptyBlock = BlockState 1 [] Nothing
+emptyBlock idx = BlockState idx [] Nothing
 
 sortBlocks :: [(Name, BlockState)] -> [(Name, BlockState)]
 sortBlocks = sortBy (compare `on` (idx . snd))
@@ -134,11 +134,11 @@ addBlock blkname = do
 
   let new = emptyBlock ix
       (qname, supply) = genName blkname nms
-  
+
   modify $ \s -> s {
     blocks = M.insert (Name qname) new bls,
     blockCount = ix + 1,
-    names = supply 
+    names = supply
   }
 
   return $ Name qname
@@ -185,7 +185,7 @@ genName n ns = case M.lookup n ns of
 
 
 local :: Name -> Operand
-local n = LocalReference double
+local = LocalReference double
 
 assignVar :: String -> Operand -> Codegen ()
 assignVar var val = do
@@ -202,8 +202,9 @@ getVar var = do
 instr :: Instruction -> Codegen Operand
 instr ins = do
   ref <- UnName <$> fresh
-  i <- stack <$> current
-  modifyBlock $ \s -> s { stack = i ++ [ ref := ins ] }
+  blk <- current
+  let i = stack blk
+  modifyBlock $ blk { stack = i ++ [ ref := ins ] }
   return $ local ref
 
 terminator :: Named Terminator -> Codegen (Named Terminator)
@@ -220,9 +221,9 @@ br val = terminator $ Do $ Br val []
 condBr :: Operand -> Name -> Name -> Codegen (Named Terminator)
 condBr cond tr fl = terminator $ Do $ CondBr cond tr fl []
 
--- return 
+-- return
 ret :: Operand -> Codegen (Named Terminator)
-ret val = terminator . Do . Ret $ Just val
+ret val = terminator . Do $ Ret (Just val) []
 
 call :: Operand -> [Operand] -> Codegen Operand
 call fun args = instr $ Call Nothing CC.C [] (Right fun) (toArgs args) [] []
@@ -239,4 +240,4 @@ load ptr = instr $ Load False ptr Nothing 0 []
 
 
 externf :: Type -> Name -> Operand
-externf = ConstantOperand . C.GlobalReference
+externf t = ConstantOperand . C.GlobalReference t

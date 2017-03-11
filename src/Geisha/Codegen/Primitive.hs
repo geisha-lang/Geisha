@@ -5,7 +5,7 @@ module Geisha.Codegen.Primitive (
 import LLVM.General.AST
 import LLVM.General.AST.Global
 
-import qualified Data.HashMap as M
+import qualified Data.Map as M
 
 import qualified Geisha.Codegen.LLVM as C
 import qualified Geisha.AST as S
@@ -30,4 +30,3 @@ fmul = fbinInsr FMul
 
 fdiv :: Operand -> Operand -> C.Codegen Operand
 fdiv = fbinInsr FDiv
-
