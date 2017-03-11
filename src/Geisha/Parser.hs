@@ -8,7 +8,7 @@ import qualified Text.Parsec.Expr as E
 import Text.Parsec.Prim (getPosition)
 import Text.ParserCombinators.Parsec (Parser, try, (<|>), (<?>),
                                       ParseError, choice,
-                                      SourcePos, parse)
+                                      SourcePos, parse, many)
 
 import Control.Applicative ((<$>))
 import Control.Monad.Except
@@ -27,13 +27,14 @@ readOrThrow parser src = case parse parser "Geisha" src of
 
 
 expr :: Parser AST
-expr = lets <|> E.buildExpressionParser operatorTable factor' <?> "expression"
+expr = lets <|> E.buildExpressionParser operatorTable factor'
 
 unOpTable = [ map prefix [ "+", "-" ] ]
 binOpTable = map assocLefts [ [ "*", "/", "%" ],
                               [ "+", "-" ],
                               [ ">", "<", "==" ],
-                              [ "&&", "||" ] ]
+                              [ "&&", "||" ],
+                              [ "=" ] ]
   where assocLefts = map (`binary` E.AssocLeft)
 
 operatorTable = unOpTable ++ binOpTable
@@ -93,7 +94,7 @@ list :: Parser Expr
 list = List <$> L.brackets (L.commaSep expr)
 
 block :: Parser Expr
-block = Block <$> L.braces (L.lineSep expr)
+block = Block <$> L.braces (L.stmtSep expr)
 
 lambda :: Parser Expr
 lambda = do
@@ -134,5 +135,8 @@ definition = parseToAST $ do
   bind <- assignment
   return . uncurry Define $ bind
 
+entry :: Parser AST
+entry = try definition <|> try expr
+
 program :: Parser [AST]
-program = L.lineSep $ try definition <|> try expr
+program = L.lineSep entry

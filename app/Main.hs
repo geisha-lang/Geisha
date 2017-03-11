@@ -19,6 +19,7 @@ process modu line = do
   case res of
     Left err -> print err >> return Nothing
     Right ex -> do
+      print ex
       ast <- codegen modu ex
       return $ Just ast
 

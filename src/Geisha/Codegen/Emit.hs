@@ -41,6 +41,8 @@ topLevel prog = define integer "main" [] blks
 toSig :: [String] -> [(AST.Type, AST.Name)]
 toSig = map $ \x -> (integer, AST.Name x)
 
+-- lambda :: AST -> Codegen AST.Operand
+
 cons = ConstantOperand
 
 gen :: S.AST -> Codegen AST.Operand
@@ -52,12 +54,25 @@ gen (S.Expr _ _ (S.Apply fn args)) = do
   call (externf integer $ AST.Name fun) largs
   where (S.Expr _ _ (S.Ident fun)) = fn
 
-gen (S.Expr _ _ (S.BinExpr op l r)) = case M.lookup op binops of
+gen (S.Expr _ _ (S.BinExpr "=" (S.Expr _ _ (S.Ident var)) val)) = do
+  a <- getVar var
+  rhs <- gen val
+  store a rhs
+  return rhs
+
+gen (S.Expr _ _ (S.BinExpr op l r)) =
+  case M.lookup op binops of
     Just f -> do
       clhs <- gen l
       crhs <- gen r
       f clhs crhs
     Nothing -> error $ "No such operator '" ++ op ++ "'"
+
+gen (S.Expr _ _ (S.Block exps)) = loop exps
+  where loop [e] = gen e
+        loop (e:es) = do
+          gen e
+          loop es
 
 gen (S.Expr _ _ (S.If cond tr fl)) = do
   ifthen <- addBlock "if.then"

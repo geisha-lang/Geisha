@@ -4,7 +4,7 @@ import Text.Parsec.Char
 import Text.Parsec.Prim ((<|>))
 import Text.Parsec.String (Parser)
 import Text.Parsec.Language (emptyDef)
-import Text.ParserCombinators.Parsec (sepBy, many)
+import Text.ParserCombinators.Parsec (try, sepBy, sepEndBy, many)
 import qualified Text.Parsec.Token as Tok
 
 lexer :: Tok.TokenParser ()
@@ -18,6 +18,8 @@ lexer = Tok.makeTokenParser defs
                  Tok.identStart = letter <|> oneOf "_$",
                  Tok.identLetter = alphaNum <|> oneOf "_$"
                }
+
+whiteSpace = Tok.whiteSpace lexer
 
 integer :: Parser Integer
 integer = Tok.integer lexer
@@ -46,11 +48,16 @@ identifier = Tok.identifier lexer
 string :: Parser String
 string = Tok.stringLiteral lexer
 
+semi = Tok.semi lexer
+
 commaSep :: Parser a -> Parser [a]
 commaSep = Tok.commaSep lexer
 
 lexeme = Tok.lexeme lexer
-lineBreaker = many $ lexeme endOfLine
+lineBreaker = lexeme endOfLine
+
+stmtSep :: Parser a -> Parser [a]
+stmtSep p = sepBy p ((return <$> try lineBreaker) <|> semi)
 
 lineSep :: Parser a -> Parser [a]
 lineSep p = sepBy p lineBreaker
