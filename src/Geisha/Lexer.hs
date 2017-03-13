@@ -1,10 +1,12 @@
 module Geisha.Lexer where
 
+import Data.Char (isSpace)
+
 import Text.Parsec.Char
 import Text.Parsec.Prim ((<|>))
 import Text.Parsec.String (Parser)
 import Text.Parsec.Language (emptyDef)
-import Text.ParserCombinators.Parsec (try, sepBy, sepEndBy, many)
+import Text.ParserCombinators.Parsec (try, sepBy, sepEndBy, many, space, skipMany)
 import qualified Text.Parsec.Token as Tok
 
 lexer :: Tok.TokenParser ()
@@ -54,12 +56,19 @@ commaSep :: Parser a -> Parser [a]
 commaSep = Tok.commaSep lexer
 
 lexeme = Tok.lexeme lexer
-lineBreaker = lexeme endOfLine
+
+isSpaceNotNewline c = isSpace c && c /= '\n' && c /= '\r'
+-- Cannot use `lexeme` or `space` since they have already included newline
+lineBreaker :: Parser String
+lineBreaker = many $ skipMany (satisfy isSpaceNotNewline) >> endOfLine
+
+stmtBreaker :: Parser String
+stmtBreaker = try semi <|> lineBreaker
 
 stmtSep :: Parser a -> Parser [a]
-stmtSep p = sepBy p ((return <$> try lineBreaker) <|> semi)
+stmtSep p = lexeme $ p `sepBy` stmtBreaker
 
 lineSep :: Parser a -> Parser [a]
-lineSep p = sepBy p lineBreaker
+lineSep p = lexeme $ sepBy p lineBreaker
 -- lineSep
 

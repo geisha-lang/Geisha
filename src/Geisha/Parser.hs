@@ -8,7 +8,7 @@ import qualified Text.Parsec.Expr as E
 import Text.Parsec.Prim (getPosition)
 import Text.ParserCombinators.Parsec (Parser, try, (<|>), (<?>),
                                       ParseError, choice,
-                                      SourcePos, parse, many)
+                                      SourcePos, parse, many, eof)
 
 import Control.Applicative ((<$>))
 import Control.Monad.Except
@@ -18,6 +18,7 @@ import Geisha.Error
 import qualified Geisha.Lexer as L
 
 readExpr :: String -> ThrowsCompileErr [AST]
+-- readExpr s = return <$> readOrThrow entry s
 readExpr = readOrThrow program
 
 readOrThrow :: Parser a -> String -> ThrowsCompileErr a
@@ -56,7 +57,7 @@ parseToAST parser = getPosition >>= \pos -> noType pos <$> parser
 
 
 factor = parseToAST (choice [ ifelse, string, number, try bool,
-                              identifier, list, try lambda,
+                              try lambda, identifier, list,
                               block ]) <|> L.parens expr
 
 factor' :: Parser AST
@@ -98,7 +99,7 @@ block = Block <$> L.braces (L.stmtSep expr)
 
 lambda :: Parser Expr
 lambda = do
-  params <- L.parens . L.commaSep $ L.identifier
+  params <- (L.parens . L.commaSep $ parseToAST identifier) <|> (return <$> parseToAST (try identifier))
   L.reservedOp "->"
   body <- expr
   return . Function $ Lambda params body
@@ -112,9 +113,9 @@ ifelse = do
   fl <- expr
   return $ If cond tr fl
 
-assignment :: Parser (String, AST)
+assignment :: Parser (AST, AST)
 assignment = do
-  var <- L.identifier
+  var <- parseToAST identifier
   L.reservedOp "="
   rhs <- expr
   return (var, rhs)
@@ -138,5 +139,16 @@ definition = parseToAST $ do
 entry :: Parser AST
 entry = try definition <|> try expr
 
+contents :: Parser a -> Parser a
+contents p = do
+  L.whiteSpace
+  r <- p
+  eof
+  return r
+
 program :: Parser [AST]
-program = L.lineSep entry
+program = contents $ L.lineSep entry
+-- program = contents . many $ do
+--   e <- entry
+--   L.lineBreaker
+--   return e

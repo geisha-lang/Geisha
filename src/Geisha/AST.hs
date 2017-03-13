@@ -1,8 +1,8 @@
 module Geisha.AST (
   Expr (..),
   AST (..),
-  ASTType (..),
-  PrimType (..),
+  GType (..),
+  Primitive (..),
   Lambda (..),
   noType
 ) where
@@ -12,40 +12,40 @@ import Text.Parsec.Pos
 
 data AST = Expr {
   pos :: SourcePos,
-  astType :: ASTType,
+  astType :: GType,
   content :: Expr
 } deriving (Eq, Ord)
 
-noType pos = Expr pos Unknown
+noType pos = Expr pos Slot
 
-data ASTType = Unknown
-             | AnyType
-             | PrimType PrimType
-             | ListType ASTType
-             | FunctionType ASTType [ASTType]
-             deriving (Eq, Ord)
-data PrimType = I32 | F64 | Boolean
-                deriving (Eq, Ord)
+data GType = Slot
+           | Primitive Primitive
+           | Composite Name GType
+            --  | TypeName Name
+            --  | Concept Name
+           deriving (Show, Eq, Ord)
+data Primitive = I32 | F64 | Boolean | Str
+                deriving (Show, Eq, Ord)
 
 instance Show AST where
   show (Expr _ _ exp) = show exp
 
 type Name = String
 data Expr = Integer Integer
-      | Float Double
-      | String String
-      | Bool Bool
-      | Ident Name
-      | List [AST]
-      | Block [AST]
-      | BinExpr Name AST AST
-      | UnExpr Name AST
-      | Function Lambda
-      | Define Name AST
-      | Let Name AST AST
-      | If AST AST AST
-      | Apply AST [AST]
-      deriving (Eq, Show, Ord)
+          | Float Double
+          | String String
+          | Bool Bool
+          | Ident Name
+          | List [AST]
+          | Block [AST]
+          | BinExpr Name AST AST
+          | UnExpr Name AST
+          | Function Lambda
+          | Define AST AST
+          | Let AST AST AST
+          | If AST AST AST
+          | Apply AST [AST]
+          deriving (Eq, Show, Ord)
 
 -- instance Show Expr where
 --   show (Let name bind target) = "(let " ++ name ++ " = " ++ show bind ++ " in\n" ++ show target ++ ")"
@@ -65,7 +65,7 @@ data Expr = Integer Integer
 
 
 data Lambda = Lambda {
-  params :: [Name],
+  params :: [AST],
   body :: AST
   -- closure :: Env
 } deriving (Eq, Ord)

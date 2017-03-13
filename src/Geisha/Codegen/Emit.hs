@@ -2,6 +2,7 @@ module Geisha.Codegen.Emit where
 
 import Control.Monad
 import Control.Monad.Except
+import Control.Monad.Trans
 
 import LLVM.General.AST as AST
 import qualified LLVM.General.AST.Constant as C
@@ -18,34 +19,46 @@ import qualified Data.Map as M
 import Geisha.Codegen.LLVM
 import Geisha.Codegen.Primitive
 import Geisha.AST as S
+import qualified Geisha.Error as E
 
-topLevel :: AST -> LLVM ()
-topLevel (Expr _ _ (Define name (Expr _ _ (S.Function (Lambda args body))))) = define integer name fnargs bls
-  where fnargs = toSig args
-        bls = createBlocks . execCodegen $ do
-          entry <- addBlock entryBlockName
-          setBlock entry
-          forM_ args $ \a -> do
-            var <- alloca integer
-            store var . local $ AST.Name a
-            assignVar a var
-          gen body >>= ret
 
-topLevel prog = define integer "main" [] blks
-  where blks = createBlocks $ execCodegen $ do
+liftThrows :: E.ThrowsCompileErr a -> ExceptT E.CompileErr LLVM a
+liftThrows (Left err) = throwError err
+liftThrows (Right val) = return val
+-- liftCompileError :: Monad m => ExceptT E.CompileErr Codegen -> m a
+
+extractIdent :: AST -> E.ThrowsCompileErr String
+extractIdent (Expr _ _ (Ident n)) = return n
+extractIdent bad                  = throwError . E.Default $ "Illegel indentifier: " ++ show bad
+
+topLevel :: AST -> ExceptT E.CompileErr LLVM ()
+topLevel (Expr _ _ (Define name (Expr _ _ (S.Function (Lambda args body))))) = do
+  args <- liftThrows $ mapM extractIdent args
+  name <- liftThrows $ extractIdent name
+  bls <- liftGen $ do
+    entry <- addBlock entryBlockName
+    setBlock entry
+    forM_ args $ \a -> do
+      var <- alloca integer
+      store var . local $ AST.Name a
+      assignVar a var
+    gen body >>= ret
+  lift $ define integer name (toSig args) bls
+
+topLevel prog = blks >>= lift . define integer "main" []
+  where blks = liftGen $ do
           entry <- addBlock entryBlockName
           setBlock entry
           gen prog >>= ret
 
+liftGen g = liftThrows $ execCodegen (runExceptT g) >>= createBlocks
 
 toSig :: [String] -> [(AST.Type, AST.Name)]
 toSig = map $ \x -> (integer, AST.Name x)
 
--- lambda :: AST -> Codegen AST.Operand
-
 cons = ConstantOperand
 
-gen :: S.AST -> Codegen AST.Operand
+gen :: S.AST -> CodegenErrorT AST.Operand
 gen (S.Expr _ _ (S.Float f)) = return . cons . C.Float $ F.Double f
 gen (S.Expr _ _ (S.Integer i)) = return . cons $ C.Int 32 i
 gen (S.Expr _ _ (S.Ident v)) = getVar v >>= load
@@ -66,7 +79,7 @@ gen (S.Expr _ _ (S.BinExpr op l r)) =
       clhs <- gen l
       crhs <- gen r
       f clhs crhs
-    Nothing -> error $ "No such operator '" ++ op ++ "'"
+    Nothing -> throwError . E.Default $ "No such operator '" ++ op ++ "'"
 
 gen (S.Expr _ _ (S.Block exps)) = loop exps
   where loop [e] = gen e
@@ -96,20 +109,29 @@ gen (S.Expr _ _ (S.If cond tr fl)) = do
   setBlock ifexit
   phi double [(trval, ifthen), (flval, ifelse)]
 
-gen ast = error $ "Not implement yet: \n" ++ show ast
--- passes :: PassSetSpec
--- passes = defaultCuratedPassSetSpec { optLevel = Just 3 }
+gen (S.Expr _ _ (S.Let a b c)) = case a of
+  (S.Expr _ _ (S.Ident a)) -> do
+    i <- alloca double
+    val <- gen b
+    store i val
+    assignVar a i
+    gen c
+  (S.Expr _ _ bad) -> throwError $ E.BadSpecialForm "Bad form in let" bad
+gen ast = throwError . E.Default $ "Not implement yet: \n" ++ show ast
 
 
-
-liftError :: ExceptT String IO a -> IO a
-liftError = runExceptT >=> either fail return
+liftIOError :: ExceptT String IO a -> IO a
+liftIOError = runExceptT >=> either fail return
 
 codegen :: AST.Module -> [S.AST] -> IO AST.Module
-codegen mod fns = withContext $ \ctx ->
-  liftError $ withModuleFromAST ctx newAST $ \m -> do
-    llstr <- moduleLLVMAssembly m
-    putStrLn llstr
-    return newAST
-  where modn = mapM topLevel fns
-        newAST = runLLVM mod modn
+codegen mod fns = case newAST of
+  Right newAST ->
+    withContext $ \ctx ->
+      liftIOError $ withModuleFromAST ctx newAST $ \m -> do
+        llstr <- moduleLLVMAssembly m
+        putStrLn llstr
+        return newAST
+  Left err     -> do
+    print err
+    return mod
+  where newAST = runLLVMOrThrow mod (runExceptT $ mapM topLevel fns)

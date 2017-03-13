@@ -8,6 +8,7 @@ import Data.Function
 
 import Control.Monad.State
 import Control.Applicative
+import Control.Monad.Except
 
 import LLVM.General.AST as AST
 import LLVM.General.AST.Global
@@ -19,7 +20,8 @@ import qualified LLVM.General.AST.FloatingPointPredicate as FP
 import qualified Data.Map as M
 import Data.Map ((!))
 
-import Geisha.AST as S (ASTType (..), PrimType (..))
+import Geisha.AST as S (GType (..), Primitive (..))
+import qualified Geisha.Error as E
 
 instance IsString Name where
   fromString = Name . fromString
@@ -35,7 +37,8 @@ data CodegenState = CodegenState {
   symtable :: SymbolTable,
   blockCount :: Int,
   count :: Word,
-  names :: Names
+  names :: Names,
+  errors :: [E.CompileErr]
 } deriving Show
 
 
@@ -48,11 +51,16 @@ data BlockState = BlockState {
 newtype Codegen a = Codegen { runCodegen :: State CodegenState a }
   deriving (Functor, Applicative, Monad, MonadState CodegenState)
 
-execCodegen :: Codegen a -> CodegenState
-execCodegen m = execState (runCodegen m) emptyCodegen
+type CodegenErrorT = ExceptT E.CompileErr Codegen
+
+execCodegen :: Codegen (E.ThrowsCompileErr a) -> E.ThrowsCompileErr CodegenState
+execCodegen m = case r of
+  Right _ -> return s
+  Left err -> throwError err
+  where (r, s) = runState (runCodegen m) emptyCodegen
 
 emptyCodegen :: CodegenState
-emptyCodegen = CodegenState (Name entryBlockName) M.empty M.empty 1 0 M.empty
+emptyCodegen = CodegenState (Name entryBlockName) M.empty M.empty 1 0 M.empty []
 
 entryBlockName = "entry"
 
@@ -61,6 +69,12 @@ newtype LLVM a = LLVM { unLLVM :: State Module a }
 
 runLLVM :: Module -> LLVM a -> Module
 runLLVM = flip (execState . unLLVM)
+
+runLLVMOrThrow :: Module -> LLVM (E.ThrowsCompileErr a) -> E.ThrowsCompileErr Module
+runLLVMOrThrow m l = case a of
+  Right _  -> return s
+  Left err -> throwError err
+  where (a, s) = runState (unLLVM l) m
 
 emptyModule :: String -> Module
 emptyModule label = defaultModule { moduleName = label }
@@ -86,14 +100,14 @@ integer = IntegerType 32
 -- bool :: Type
 -- bool
 
-convertType :: ASTType -> Type
-convertType (PrimType I32) = integer
-convertType (PrimType F64) = double
-convertType (S.FunctionType res args) = AST.FunctionType (convertType res)
-                                                         (map convertType args)
-                                                         False
+-- convertType :: GType -> Type
+-- convertType (Primitive I32) = integer
+-- convertType (Primitive F64) = double
+-- convertType (S.FunctionType res args) = AST.FunctionType (convertType res)
+--                                                          (map convertType args)
+--                                                          False
 
-convertType _ = error "Type havent been implement"
+-- convertType _ = error "Type havent been implement"
 
 
 
@@ -114,8 +128,8 @@ emptyBlock idx = BlockState idx [] Nothing
 sortBlocks :: [(Name, BlockState)] -> [(Name, BlockState)]
 sortBlocks = sortBy (compare `on` (idx . snd))
 
-createBlocks :: CodegenState -> [BasicBlock]
-createBlocks m = map makeBlock $ sortBlocks $ M.toList (blocks m)
+createBlocks :: CodegenState -> E.ThrowsCompileErr [BasicBlock]
+createBlocks m = return . map makeBlock . sortBlocks $ M.toList (blocks m)
 
 makeBlock :: (Name, BlockState) -> BasicBlock
 makeBlock (l, BlockState _ s t) = BasicBlock l s (maketerm t)
@@ -124,10 +138,10 @@ makeBlock (l, BlockState _ s t) = BasicBlock l s (maketerm t)
     maketerm Nothing = error $ "Block has no terminator: " ++ show l
 
 
-entry :: Codegen Name
-entry = gets currentBlock
+entry :: CodegenErrorT Name
+entry = lift $ gets currentBlock
 
-addBlock :: String -> Codegen Name
+addBlock :: String -> CodegenErrorT Name
 addBlock blkname = do
   bls <- gets blocks
   ix  <- gets blockCount
@@ -144,23 +158,23 @@ addBlock blkname = do
 
   return $ Name qname
 
-setBlock :: Name -> Codegen Name
+setBlock :: Name -> CodegenErrorT Name
 setBlock blkname = do
   modify $ \s -> s { currentBlock = blkname }
   return blkname
 
-getBlock :: Codegen Name
-getBlock = gets currentBlock
+getBlock :: CodegenErrorT Name
+getBlock = lift $ gets currentBlock
 
-modifyBlock :: BlockState -> Codegen ()
-modifyBlock new = do
+modifyBlock :: BlockState -> CodegenErrorT ()
+modifyBlock new = lift $ do
   act <- gets currentBlock
   modify $ \s -> s {
     blocks = M.insert act new $ blocks s
   }
 
-current :: Codegen BlockState
-current = do
+current :: CodegenErrorT BlockState
+current = lift $ do
   c <- gets currentBlock
   blks <- gets blocks
   case M.lookup c blks of
@@ -168,13 +182,18 @@ current = do
     Nothing -> error $ "No such block " ++ show c
 
 
-
+addError :: E.CompileErr -> CodegenErrorT ()
+addError err = lift $ do
+  cur <- gets errors
+  modify $ \s -> s {
+    errors = err : cur
+  }
 --------------
 --
 --------------
 
-fresh :: Codegen Word
-fresh = do
+fresh :: CodegenErrorT Word
+fresh = lift $ do
   i <- gets count
   modify $ \s -> s { count = i + 1 }
   return $ i + 1
@@ -188,19 +207,19 @@ genName n ns = case M.lookup n ns of
 local :: Name -> Operand
 local = LocalReference double
 
-assignVar :: String -> Operand -> Codegen ()
-assignVar var val = do
+assignVar :: String -> Operand -> CodegenErrorT ()
+assignVar var val = lift $ do
   locals <- gets symtable
   modify $ \s -> s { symtable = M.insert var val locals }
 
-getVar :: String -> Codegen Operand
+getVar :: String -> CodegenErrorT Operand
 getVar var = do
   locals <- gets symtable
   case M.lookup var locals of
     Just v -> return v
-    Nothing -> error $ "Local varable not in scope " ++ var
+    Nothing -> throwError $ E.Unbound var
 
-instr :: Instruction -> Codegen Operand
+instr :: Instruction -> CodegenErrorT Operand
 instr ins = do
   ref <- UnName <$> fresh
   blk <- current
@@ -208,43 +227,43 @@ instr ins = do
   modifyBlock $ blk { stack = i ++ [ ref := ins ] }
   return $ local ref
 
-terminator :: Named Terminator -> Codegen (Named Terminator)
+terminator :: Named Terminator -> CodegenErrorT (Named Terminator)
 terminator trm = do
   blk <- current
   modifyBlock $ blk { term = Just trm }
   return trm
 
 -- jump
-br :: Name -> Codegen (Named Terminator)
+br :: Name -> CodegenErrorT (Named Terminator)
 br val = terminator $ Do $ Br val []
 
-cbr :: Operand -> Name -> Name -> Codegen (Named Terminator)
+cbr :: Operand -> Name -> Name -> CodegenErrorT (Named Terminator)
 cbr cond tr fl = terminator $ Do $ CondBr cond tr fl []
 -- conditional jump
-condBr :: Operand -> Name -> Name -> Codegen (Named Terminator)
+condBr :: Operand -> Name -> Name -> CodegenErrorT (Named Terminator)
 condBr cond tr fl = terminator $ Do $ CondBr cond tr fl []
 
 -- return
-ret :: Operand -> Codegen (Named Terminator)
+ret :: Operand -> CodegenErrorT (Named Terminator)
 ret val = terminator . Do $ Ret (Just val) []
 
-fcmp :: FP.FloatingPointPredicate -> Operand -> Operand -> Codegen Operand
+fcmp :: FP.FloatingPointPredicate -> Operand -> Operand -> CodegenErrorT Operand
 fcmp cond a b = instr $ FCmp cond a b []
 
-phi :: Type -> [(Operand, Name)] -> Codegen Operand
+phi :: Type -> [(Operand, Name)] -> CodegenErrorT Operand
 phi ty incoming = instr $ Phi ty incoming []
 
-call :: Operand -> [Operand] -> Codegen Operand
+call :: Operand -> [Operand] -> CodegenErrorT Operand
 call fun args = instr $ Call Nothing CC.C [] (Right fun) (toArgs args) [] []
   where toArgs = map $ \arg -> (arg, [])
 
-alloca :: Type -> Codegen Operand
+alloca :: Type -> CodegenErrorT Operand
 alloca ty = instr $ Alloca ty Nothing 0 []
 
-store :: Operand -> Operand -> Codegen Operand
+store :: Operand -> Operand -> CodegenErrorT Operand
 store ptr val = instr $ Store False ptr val Nothing 0 []
 
-load :: Operand -> Codegen Operand
+load :: Operand -> CodegenErrorT Operand
 load ptr = instr $ Load False ptr Nothing 0 []
 
 

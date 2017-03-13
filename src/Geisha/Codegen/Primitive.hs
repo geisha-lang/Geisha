@@ -19,14 +19,14 @@ binops = M.fromList [
 
 fbinInsr f a b = C.instr $ f NoFastMathFlags a b []
 
-fadd :: Operand -> Operand -> C.Codegen Operand
+fadd :: Operand -> Operand -> C.CodegenErrorT Operand
 fadd = fbinInsr FAdd
 
-fsub :: Operand -> Operand -> C.Codegen Operand
+fsub :: Operand -> Operand -> C.CodegenErrorT Operand
 fsub = fbinInsr FSub
 
-fmul :: Operand -> Operand -> C.Codegen Operand
+fmul :: Operand -> Operand -> C.CodegenErrorT Operand
 fmul = fbinInsr FMul
 
-fdiv :: Operand -> Operand -> C.Codegen Operand
+fdiv :: Operand -> Operand -> C.CodegenErrorT Operand
 fdiv = fbinInsr FDiv
