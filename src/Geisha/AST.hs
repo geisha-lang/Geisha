@@ -10,42 +10,59 @@ module Geisha.AST (
 import Data.List
 import Text.Parsec.Pos
 
-data AST = Expr {
-  pos :: SourcePos,
-  astType :: GType,
-  content :: Expr
-} deriving (Eq, Ord)
+type Name = String
+
+data AST = Expr SourcePos GType Expr
+         | Decl SourcePos GType Decl
+         deriving (Eq, Ord)
 
 noType pos = Expr pos Slot
 
-data GType = Slot
-           | Primitive Primitive
-           | Composite Name GType
+data GType = TSlot
+           | Void
+           | TVar Name
+           | TCon Name
+          --  | TPrim PrimType
+          --  | TArr GType GType
+          --  | TProd GType GType
+           | TComb Name GType GType
+           | TConcept Name
             --  | TypeName Name
             --  | Concept Name
            deriving (Show, Eq, Ord)
-data Primitive = I32 | F64 | Boolean | Str
-                deriving (Show, Eq, Ord)
+-- data PrimType = TInt | TFloat | TBool | TStr | TArr | TProd
+--               deriving (Show, Eq, Ord)
 
+data Scheme = Forall [Name] GType
+
+-- data Type = TVar TVar | TCon TyCon | TApp Type Type | TArr Type Type
+-- | TForall [Pred] [TVar] Type
 instance Show AST where
   show (Expr _ _ exp) = show exp
 
-type Name = String
-data Expr = Integer Integer
-          | Float Double
-          | String String
-          | Bool Bool
-          | Ident Name
+data Expr = Lit Lit
+          | Var Name
           | List [AST]
           | Block [AST]
-          | BinExpr Name AST AST
-          | UnExpr Name AST
+          -- | BinExpr Name AST AST
+          -- | UnExpr Name AST
           | Function Lambda
-          | Define AST AST
+          -- | Define AST AST
           | Let AST AST AST
           | If AST AST AST
           | Apply AST [AST]
           deriving (Eq, Show, Ord)
+
+data Decl = Define Name AST
+          | Concept {
+            _name :: Name,
+            _bounds :: [Decl]
+          }
+          | Inst Name 
+data Lit = LInt Integer
+         | LFloat Double
+         | LStr String
+         | LBool Bool
 
 -- instance Show Expr where
 --   show (Let name bind target) = "(let " ++ name ++ " = " ++ show bind ++ " in\n" ++ show target ++ ")"

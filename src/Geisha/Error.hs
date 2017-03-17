@@ -24,7 +24,12 @@ data CompileErr = Parse ParseError
                 | Unbound String
                 | Default String
                 | BadSpecialForm String Expr
-                | TypeMissMatch AST GType GType
+                | TypeError TypeError
+
+data TypeError = Mismatch GType GType
+               | NotFunction Type
+               | NotInScope Name
+               | InfiniteType Name GType
 
 instance Show CompileErr where
     show (Parse err) = show err

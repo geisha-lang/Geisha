@@ -44,13 +44,15 @@ binary :: String -> E.Assoc -> E.Operator String () Identity AST
 binary tk = E.Infix $ do
   pos <- getPosition
   L.reservedOp tk
-  return (\lhs rhs -> noType pos $ BinExpr tk lhs rhs)
+  let identOp = noType pos $ Var tk
+  return (\lhs rhs -> noType pos $ Apply identOp [lhs, rhs])
 
 prefix :: String -> E.Operator String () Identity AST
 prefix tk = E.Prefix $ do
   pos <- getPosition
   L.reservedOp tk
-  return (noType pos . UnExpr tk)
+  let identOp = noType pos $ Var tk
+  return (\e -> noType pos $ Apply identOp [e])
   -- return . Expr pos $ UnExpr tk
 
 parseToAST parser = getPosition >>= \pos -> noType pos <$> parser
@@ -72,21 +74,21 @@ factor' = do
 
 
 string :: Parser Expr
-string = String <$> L.string
+string = Lit . LStr <$> L.string
 
 identifier :: Parser Expr
-identifier = Ident <$> L.identifier
+identifier = Var <$> L.identifier
 
 bool :: Parser Expr
 bool = true <|> false
-  where true = L.reserved "true" >> return (Bool True)
-        false = L.reserved "false" >> return (Bool False)
+  where true = L.reserved "true" >> return (Lit . LBool $ True)
+        false = L.reserved "false" >> return (Lit . LBool $ False)
 
 float :: Parser Expr
-float = Float <$> L.float
+float = Lit . LFloat <$> L.float
 
 integer :: Parser Expr
-integer = Integer <$> L.integer
+integer = Lit . LInt <$> L.integer
 
 number :: Parser Expr
 number = try float <|> try integer

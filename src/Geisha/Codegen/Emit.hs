@@ -28,7 +28,7 @@ liftThrows (Right val) = return val
 -- liftCompileError :: Monad m => ExceptT E.CompileErr Codegen -> m a
 
 extractIdent :: AST -> E.ThrowsCompileErr String
-extractIdent (Expr _ _ (Ident n)) = return n
+extractIdent (Expr _ _ (Var n)) = return n
 extractIdent bad                  = throwError . E.Default $ "Illegel indentifier: " ++ show bad
 
 topLevel :: AST -> ExceptT E.CompileErr LLVM ()
@@ -59,15 +59,20 @@ toSig = map $ \x -> (integer, AST.Name x)
 cons = ConstantOperand
 
 gen :: S.AST -> CodegenErrorT AST.Operand
-gen (S.Expr _ _ (S.Float f)) = return . cons . C.Float $ F.Double f
-gen (S.Expr _ _ (S.Integer i)) = return . cons $ C.Int 32 i
-gen (S.Expr _ _ (S.Ident v)) = getVar v >>= load
+gen (S.Expr _ _ (S.Lit lit)) = return . cons $ case lit of
+  LInt i      -> C.Int 32 i
+  LFloat f    -> C.Float $ F.Double f
+  LBool True  -> C.Float $ F.Double 1.0
+  LBool False -> C.Float $ F.Double 0.0
+  -- return . cons . C.Float $ F.Double f
+-- gen (S.Expr _ _ (S.Integer i)) = return . cons $ C.Int 32 i
+gen (S.Expr _ _ (S.Var v)) = getVar v >>= load
 gen (S.Expr _ _ (S.Apply fn args)) = do
   largs <- mapM gen args
   call (externf integer $ AST.Name fun) largs
-  where (S.Expr _ _ (S.Ident fun)) = fn
+  where (S.Expr _ _ (S.Var fun)) = fn
 
-gen (S.Expr _ _ (S.BinExpr "=" (S.Expr _ _ (S.Ident var)) val)) = do
+gen (S.Expr _ _ (S.BinExpr "=" (S.Expr _ _ (S.Var var)) val)) = do
   a <- getVar var
   rhs <- gen val
   store a rhs
