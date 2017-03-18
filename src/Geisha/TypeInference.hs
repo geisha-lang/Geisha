@@ -1,7 +1,11 @@
 module Geisha.TypeInference where
 
+import Prelude hiding (product)
+
 import qualified Data.HashMap as M
 import qualified Data.Set as S
+
+import Data.List (nub)
 
 import Control.Monad.State
 import Control.Applicative
@@ -10,7 +14,7 @@ import Control.Monad.Except
 import Geisha.AST
 import Geisha.Error
 
-type Name = String
+-- type Name = String
 
 typeInt, typeBool, typeFloat, typeStr :: GType
 typeInt = TCon "Int"
@@ -27,10 +31,13 @@ productAll = foldl1 product
 newtype TypeEnv = TypeEnv (M.Map Name Scheme)
                 deriving (Eq, Show)
 
+emptyEnv = TypeEnv M.empty
+envList = TypeEnv . M.fromList
+
 extend :: TypeEnv -> (Name, Scheme) -> TypeEnv
 extend (TypeEnv env) (n, s) = TypeEnv $ M.insert n s env
 
-type Subst = M.Map Name Type
+type Subst = M.Map Name GType
 
 emptySubst :: Subst
 emptySubst = M.empty
@@ -38,20 +45,21 @@ emptySubst = M.empty
 compose :: Subst -> Subst -> Subst
 s1 `compose` s2 = M.map (apply s1) s2 `M.union` s1
 
+composeAll :: [Subst] -> Subst
 composeAll = foldl1 compose
 
 class Substitutable a where
   apply :: Subst -> a -> a
-  ftv   :: a -> S.Set
+  ftv   :: a -> S.Set Name
 
 instance Substitutable GType where
   apply _ (TCon a) = TCon a
   apply s t@(TVar a) = M.findWithDefault t a s
-  apply s (t1 `TArr` t2) = apply s t1 `TArr` apply s t2
+  apply s (TComb a t1 t2) = TComb a (apply s t1) (apply s t2)
 
   ftv (TCon _) = S.empty
   ftv (TVar a) = S.singleton a
-  ftv (t1 `TArr` t2) = ftv t1 `S.union` ftv t2
+  ftv (TComb a t1 t2) = ftv t1 `S.union` ftv t2
 
 instance Substitutable Scheme where
   apply s (Forall as t) = Forall as $ apply s' t
@@ -68,13 +76,34 @@ instance Substitutable TypeEnv where
 
 type Infer a = ExceptT TypeError (State Unique) a
 
-runInfer :: Infer (Subst, Type) -> Either TypeError Scheme
+newtype Unique = Unique { count :: Int }
+initUnique = Unique 0
+
+runInfer :: Infer (Subst, GType) -> Either TypeError Scheme
 runInfer m = case evalState (runExceptT m) initUnique of
-  Right res -> Right $ closeOver res
-  err       -> err
+  Right (sub, res) -> Right $ closeOver res
+  Left err         -> throwError err
+
+closeOver :: GType -> Scheme
+closeOver = normalize . generalize emptyEnv
+
+normalize :: Scheme -> Scheme
+normalize (Forall _ body) = Forall (map snd ord) (normtype body)
+  where ord = zip (nub $ fv body) letters
+
+        fv (TVar a)   = [a]
+        fv (TComb _ a b) = fv a ++ fv b
+        fv (TCon _)    = []
+
+        normtype (TComb c a b) = TComb c (normtype a) (normtype b)
+        normtype (TCon a)   = TCon a
+        normtype (TVar a)   =
+          case Prelude.lookup a ord of
+            Just x -> TVar x
+            Nothing -> error "type variable not in signature"
 
 
-letters = [String]
+letters :: [String]
 letters = [1..] >>= flip replicateM ['a'..'z']
 
 fresh :: Infer GType
@@ -83,12 +112,12 @@ fresh = do
   put $ s { count = count s + 1 }
   return . TVar $ letters !! count s
 
-occursCheck :: Substitutable a => TVar -> a -> Bool
+occursCheck :: Substitutable a => Name -> a -> Bool
 occursCheck a t = a `S.member` ftv t
 
-bind :: Name -> Type -> Infer Subst
+bind :: Name -> GType -> Infer Subst
 bind a t
-  | t == TVar a     = return nullSubst
+  | t == TVar a     = return emptySubst
   | occursCheck a t = throwError $ InfiniteType a t
   | otherwise       = return $ M.singleton a t
 
@@ -102,7 +131,7 @@ unify (TComb n l r) (TComb n' l' r')
 unify (TVar a) t = bind a t
 unify t (TVar a) = bind a t
 unify (TCon a) (TCon b)
-  | a == b = return nullSubst
+  | a == b = return emptySubst
 unify t1 t2 = throwError $ Mismatch t1 t2
 
 instantiate :: Scheme -> Infer GType
@@ -111,28 +140,30 @@ instantiate (Forall as t) = do
   let s = M.fromList $ zip as as'
   return $ apply s t
 
-generalize :: TypeEnv -> Type -> Scheme
+generalize :: TypeEnv -> GType -> Scheme
 generalize env t = Forall as t
   where as = S.toList $ ftv t S.\\ ftv env
 
-lookupEnv :: Env -> Name -> Infer (Subst, Type)
+lookupEnv :: TypeEnv -> Name -> Infer (Subst, GType)
 lookupEnv (TypeEnv e) x = case x `M.lookup` e of
   Just t -> do
     t' <- instantiate t
-    return (nullSubst, t')
+    return (emptySubst, t')
   _      -> throwError $ NotInScope x
 
-infer :: TypeEnv -> AST -> Infer (Subst, Type)
+infer :: TypeEnv -> AST -> Infer (Subst, GType)
 infer env (Expr pos ty ex) = case ex of
   Lit lit -> let
-    constType ty = return (nullSubst, ty)
+    constType ty = return (emptySubst, ty)
     in constType $ case lit of
       LInt{} -> typeInt
       LStr{} -> typeStr
       LBool{} -> typeBool
       LFloat{} -> typeFloat
   Var x -> lookupEnv env x
-  Function (Lambda [] e) -> return (nullSubst, arrow Void $ infer env e)
+  Function (Lambda [] e) -> do
+    (_, ty) <- infer env e
+    return (emptySubst, arrow Void ty)
   Function (Lambda x e) -> do
     tvs <- mapM (const fresh) x
     let tvargs = map (Forall []) tvs
@@ -141,18 +172,18 @@ infer env (Expr pos ty ex) = case ex of
     let env' = foldl extend env $ zip nargs tvargs
     -- let env' = env (`extend` (x, Forall [] tv))
     (s', t') <- infer env' e
+    let targs = productAll $ apply s' tvs
     return (s', targs `arrow` t')
-      where targs = productAll $ apply s' tvs
   
   Apply e [] -> do
     (s, t) <- infer env e
     tv <- fresh
-    s <- unify t1 $ Void `arrow` tv
+    s <- unify t $ Void `arrow` tv
     return (s, apply s tv)
   Apply e1 e2 -> do
     tv <- fresh
     (s1, t1) <- infer env e1
-    (s2s, t2s) <- unzip <$> mapM (infer $ apply s1 env) $ e2
+    (s2s, t2s) <- fmap unzip $ mapM (infer $ apply s1 env) $ e2
     let s2 = composeAll s2s
     let t2 = productAll t2s
     s3 <- unify (apply s2 t1) $ t2 `arrow` tv

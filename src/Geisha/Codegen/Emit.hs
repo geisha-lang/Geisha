@@ -32,9 +32,9 @@ extractIdent (Expr _ _ (Var n)) = return n
 extractIdent bad                  = throwError . E.Default $ "Illegel indentifier: " ++ show bad
 
 topLevel :: AST -> ExceptT E.CompileErr LLVM ()
-topLevel (Expr _ _ (Define name (Expr _ _ (S.Function (Lambda args body))))) = do
+topLevel (Decl _ _ (Define name (Expr _ _ (S.Function (Lambda args body))))) = do
   args <- liftThrows $ mapM extractIdent args
-  name <- liftThrows $ extractIdent name
+  -- name <- liftThrows $ extractIdent name
   bls <- liftGen $ do
     entry <- addBlock entryBlockName
     setBlock entry
@@ -72,19 +72,25 @@ gen (S.Expr _ _ (S.Apply fn args)) = do
   call (externf integer $ AST.Name fun) largs
   where (S.Expr _ _ (S.Var fun)) = fn
 
-gen (S.Expr _ _ (S.BinExpr "=" (S.Expr _ _ (S.Var var)) val)) = do
+-- gen (S.Expr _ _ (S.BinExpr "=" (S.Expr _ _ (S.Var var)) val)) = do
+--   a <- getVar var
+--   rhs <- gen val
+--   store a rhs
+--   return rhs
+
+-- gen (S.Expr _ _ (S.BinExpr op l r)) =
+--   case M.lookup op binops of
+--     Just f -> do
+--       clhs <- gen l
+--       crhs <- gen r
+--       f clhs crhs
+--     Nothing -> throwError . E.Default $ "No such operator '" ++ op ++ "'"
+
+gen (S.Expr _ _ (S.Apply (S.Expr _ _ (S.Var "=")) [S.Expr _ _ (S.Var var), val])) = do
   a <- getVar var
   rhs <- gen val
   store a rhs
   return rhs
-
-gen (S.Expr _ _ (S.BinExpr op l r)) =
-  case M.lookup op binops of
-    Just f -> do
-      clhs <- gen l
-      crhs <- gen r
-      f clhs crhs
-    Nothing -> throwError . E.Default $ "No such operator '" ++ op ++ "'"
 
 gen (S.Expr _ _ (S.Block exps)) = loop exps
   where loop [e] = gen e
@@ -115,7 +121,7 @@ gen (S.Expr _ _ (S.If cond tr fl)) = do
   phi double [(trval, ifthen), (flval, ifelse)]
 
 gen (S.Expr _ _ (S.Let a b c)) = case a of
-  (S.Expr _ _ (S.Ident a)) -> do
+  (S.Expr _ _ (S.Var a)) -> do
     i <- alloca double
     val <- gen b
     store i val

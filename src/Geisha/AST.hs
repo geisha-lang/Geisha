@@ -1,11 +1,4 @@
-module Geisha.AST (
-  Expr (..),
-  AST (..),
-  GType (..),
-  Primitive (..),
-  Lambda (..),
-  noType
-) where
+module Geisha.AST where
 
 import Data.List
 import Text.Parsec.Pos
@@ -16,7 +9,7 @@ data AST = Expr SourcePos GType Expr
          | Decl SourcePos GType Decl
          deriving (Eq, Ord)
 
-noType pos = Expr pos Slot
+noType pos = Expr pos TSlot
 
 data GType = TSlot
            | Void
@@ -34,11 +27,13 @@ data GType = TSlot
 --               deriving (Show, Eq, Ord)
 
 data Scheme = Forall [Name] GType
+            deriving (Show, Eq, Ord)
 
 -- data Type = TVar TVar | TCon TyCon | TApp Type Type | TArr Type Type
 -- | TForall [Pred] [TVar] Type
 instance Show AST where
-  show (Expr _ _ exp) = show exp
+  show (Expr _ _ exp)  = show exp
+  show (Decl _ _ decl) = show decl
 
 data Expr = Lit Lit
           | Var Name
@@ -59,10 +54,13 @@ data Decl = Define Name AST
             _bounds :: [Decl]
           }
           | Inst Name 
+          deriving (Eq, Show, Ord)
+
 data Lit = LInt Integer
          | LFloat Double
          | LStr String
          | LBool Bool
+         deriving (Eq, Show, Ord)
 
 -- instance Show Expr where
 --   show (Let name bind target) = "(let " ++ name ++ " = " ++ show bind ++ " in\n" ++ show target ++ ")"

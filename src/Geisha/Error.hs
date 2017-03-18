@@ -2,6 +2,7 @@ module Geisha.Error (
     ThrowsCompileErr,
     IOThrowsError,
     CompileErr(..),
+    TypeError(..),
     liftThrows
 ) where
 
@@ -27,17 +28,13 @@ data CompileErr = Parse ParseError
                 | TypeError TypeError
 
 data TypeError = Mismatch GType GType
-               | NotFunction Type
+               | NotFunction GType
                | NotInScope Name
                | InfiniteType Name GType
+               deriving (Show)
 
 instance Show CompileErr where
     show (Parse err) = show err
     show (Unbound name) = "Unbound identifier: " ++ name
     show (Default s) = "Error: " ++ s
-    show (TypeMissMatch node expect actual) = "Type error: " ++
-                                              show node ++
-                                              " expect: " ++
-                                              show expect ++
-                                              ", actual: " ++
-                                              show actual
+    show (TypeError err) = "Type error: " ++ show err

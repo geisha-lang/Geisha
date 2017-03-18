@@ -133,10 +133,13 @@ lets = do
             Expr t pos1 . Let var b
 
 definition :: Parser AST
-definition = parseToAST $ do
+definition = getPosition >>= \pos -> Decl pos TSlot <$> do
   L.reserved "def"
-  bind <- assignment
-  return . uncurry Define $ bind
+  -- bind <- assignment
+  var <- L.identifier
+  L.reservedOp "="
+  rhs <- expr
+  return $ Define var rhs
 
 entry :: Parser AST
 entry = try definition <|> try expr

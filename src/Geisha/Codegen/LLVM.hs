@@ -20,7 +20,7 @@ import qualified LLVM.General.AST.FloatingPointPredicate as FP
 import qualified Data.Map as M
 import Data.Map ((!))
 
-import Geisha.AST as S (GType (..), Primitive (..))
+import Geisha.AST as S (GType (..))
 import qualified Geisha.Error as E
 
 instance IsString Name where
