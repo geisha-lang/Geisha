@@ -2,7 +2,10 @@ module Main where
 
 import Prelude hiding (product)
 import Control.Monad
+import Control.Monad.State
 import Control.Monad.Trans
+import Control.Monad.Except
+
 import System.Console.Haskeline
 import System.Environment
 
@@ -16,7 +19,7 @@ import Geisha.Codegen.Emit
 import Geisha.AST
 import Geisha.Codegen.LLVM
 
-import Geisha.TypeInference
+import Geisha.TypeInfer
 
 initModule :: AST.Module
 initModule = emptyModule "prelude"
@@ -41,12 +44,14 @@ showType env src = case readExpr src of
   Left err -> print err
   Right ast -> do
     print ast
-    case mapM (runInfer . infer env) ast of
-      Right scms -> print scms
+    case fmap fst . runInfer env . inferTop $ ast of
+      Right env -> print env
       Left err  -> print err
 
 preludeEnv :: TypeEnv
-preludeEnv = envList [ ("+", Forall ["a"] $ arrow (product (TVar "a") (TVar "a")) (TVar "a")) ]
+preludeEnv = envList [ ("+", Forall ["a"] $ arrow (product (TVar "a") (TVar "a")) (TVar "a")),
+                       ("=", Forall ["a"] $ arrow (product (TVar "a") (TVar "a")) Void),
+                       ("==", Forall ["a"] $ arrow (product (TVar "a") (TVar "a")) typeBool) ]
 
 main :: IO ()
 main = do
@@ -54,8 +59,9 @@ main = do
   if null args then
     runInputT defaultSettings (loop initModule)
   else do
-    processFile $ head args
-    return ()
+    -- processFile $ head args
+    src <- readFile $ head args
+    showType preludeEnv src
   where loop mod = do
           minput <- getInputLine "ready> "
           case minput of

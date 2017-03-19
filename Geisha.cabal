@@ -22,7 +22,7 @@ library
                      , Geisha.Codegen.LLVM
                      , Geisha.Codegen.Emit
                      , Geisha.Codegen.Primitive
-                     , Geisha.TypeInference
+                     , Geisha.TypeInfer
   build-depends:       base >= 4.7 && < 5
                      , parsec
                      , mtl

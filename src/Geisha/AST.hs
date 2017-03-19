@@ -15,20 +15,36 @@ data GType = TSlot
            | Void
            | TVar Name
            | TCon Name
+           | TArr GType GType
+           | TProd GType GType
+          --  | TComp Name GType GType
           --  | TPrim PrimType
-          --  | TArr GType GType
-          --  | TProd GType GType
-           | TComb Name GType GType
-           | TConcept Name
+          --  | TConcept Name
             --  | TypeName Name
             --  | Concept Name
-           deriving (Show, Eq, Ord)
+           deriving (Eq, Ord)
 -- data PrimType = TInt | TFloat | TBool | TStr | TArr | TProd
 --               deriving (Show, Eq, Ord)
 
-data Scheme = Forall [Name] GType
-            deriving (Show, Eq, Ord)
+showFact t@(TArr _ _ ) = "(" ++ show t ++ ")"
+showFact t          = show t
 
+instance Show GType where
+  show TSlot = "_"
+  show Void  = "∅"
+  show (TVar n) = n
+  show (TCon n) = n
+  show (TArr l r)  = unwords [showFact l, "⇒", showFact r]
+  show (TProd l r) = unwords [showFact l, "×", showFact r]
+  -- show (TComp c l r) = unwords [c, show l, show r]
+  -- show (TConcept n) = n
+
+data Scheme = Forall [Name] GType
+            deriving (Eq, Ord)
+
+instance Show Scheme where
+  show (Forall names ty) = unwords $ quantifier ++ [show ty]
+    where quantifier = if null names then [] else ["∀", intercalate ", " names, "."]
 -- data Type = TVar TVar | TCon TyCon | TApp Type Type | TArr Type Type
 -- | TForall [Pred] [TVar] Type
 instance Show AST where
@@ -39,13 +55,13 @@ data Expr = Lit Lit
           | Var Name
           | List [AST]
           | Block [AST]
-          -- | BinExpr Name AST AST
-          -- | UnExpr Name AST
           | Function Lambda
-          -- | Define AST AST
           | Let AST AST AST
           | If AST AST AST
           | Apply AST [AST]
+          -- | Define AST AST
+          -- | BinExpr Name AST AST
+          -- | UnExpr Name AST
           deriving (Eq, Show, Ord)
 
 data Decl = Define Name AST

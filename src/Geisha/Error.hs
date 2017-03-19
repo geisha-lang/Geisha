@@ -31,6 +31,9 @@ data TypeError = Mismatch GType GType
                | NotFunction GType
                | NotInScope Name
                | InfiniteType Name GType
+               | Reserved String Expr
+               | BadTypeForm String Expr
+               | UnificationMismatch [GType] [GType]
                deriving (Show)
 
 instance Show CompileErr where
