@@ -101,7 +101,7 @@ type Infer = RWST TypeEnv [Constraint] InferState (Except TypeError)
 type Constraint = (GType, GType)
 type Unifier = (Subst, [Constraint])
 
--- type Solve = StateT Unifier (Except TypeError)
+
 type Solve = Except TypeError
 
 runSolve :: [Constraint] -> Either TypeError Subst
@@ -110,13 +110,6 @@ runSolve cs = runExcept $ solver (emptySubst, cs)
 runInfer :: TypeEnv -> Infer a -> Either TypeError (a, [Constraint])
 runInfer env m = runExcept $ evalRWST m env initInfer
 
--- newtype Unique = Unique { count :: Int }
--- initUnique = Unique 0
-
--- runInfer :: Infer (Subst, GType) -> Either TypeError Scheme
--- runInfer m = case evalState (runExceptT m) initUnique of
---   Right (sub, res) -> Right $ closeOver res
---   Left err         -> throwError err
 
 closeOver :: GType -> Scheme
 closeOver = normalize . generalize emptyEnv
@@ -158,20 +151,6 @@ bind a t
   | occursCheck a t = throwError $ InfiniteType a t
   | otherwise       = return $ M.singleton a t
 
--- unify :: GType -> GType -> Infer Subst
--- unify (TComp n l r) (TComp n' l' r') 
---   | n == n' = do
---       s1 <- unify l l'
---       s2 <- unify (apply s1 r) (apply s1 r')
---       return $ s2 `compose` s1
-
--- unify (TVar a) t = bind a t
--- unify t (TVar a) = bind a t
--- -- unify (TCon a) (TCon b)
--- --   | a == b = return emptySubst
--- unify t1 t2
---   | t1 == t2  = return emptySubst
---   | otherwise = throwError $ Mismatch t1 t2
 
 uni :: GType -> GType -> Infer ()
 uni tl tr = tell [(tl, tr)]
@@ -199,12 +178,6 @@ generalize :: TypeEnv -> GType -> Scheme
 generalize env t = Forall as t
   where as = S.toList $ ftv t S.\\ ftv env
 
--- lookupEnv :: TypeEnv -> Name -> Infer (Subst, GType)
--- lookupEnv (TypeEnv e) x = case x `M.lookup` e of
---   Just t -> do
---     t' <- instantiate t
---     return (emptySubst, t')
---   _      -> throwError $ NotInScope x
 
 lookupEnv :: Name -> Infer GType
 lookupEnv x = do
@@ -213,7 +186,7 @@ lookupEnv x = do
     Nothing -> throwError $ NotInScope x
     Just s  -> instantiate s
 
-inferTop :: [AST] -> Infer TypeEnv
+inferTop :: [Form] -> Infer TypeEnv
 inferTop ds = do
   tvs <- mapM (const fresh) ds
   env <- ask
@@ -221,38 +194,25 @@ inferTop ds = do
       tvs' = map (generalize env) tvs
       pairs = zip ns tvs'
   inEnv' pairs $ inferDecls ds
-  -- let env' = foldl extend env pairs
-  -- case inferDecls env' ds of
-  --   Right e  -> return e
-  --   Left err -> throwError err
   where declName (Decl _ _ (Define n _)) = n
 
-inferDecls :: [AST] -> Infer TypeEnv
+inferDecls :: [Form] -> Infer TypeEnv
 inferDecls [] = ask
 inferDecls (Decl pos ty (Define name e) : ds) = do
   scm <- inferExpr e
   inEnv (name, scm) $ inferDecls ds
-  -- inferDecls (env `extend` (name, scm)) ds
--- case inferExpr env e of
---   Left err  -> throwError err
---   Right scm -> inferDecls (env `extend` (name, scm)) ds
 
-inferExpr :: AST -> Infer Scheme
--- inferExpr env [] = return env
+
+inferExpr :: Form -> Infer Scheme
 inferExpr e = do
-  -- ty <- infer e
-  -- case runSolve cs of
-  --   Left err    -> throwError err
-  --   Right subst -> return . closeOver $ apply subst ty
   env <- ask
   case runInfer env $ infer e of
     Right (ty, cs) -> case runSolve cs of
       Left err    -> throwError err
       Right subst -> return . closeOver $ apply subst ty
-      -- inferDecl (extend env (name, scm)) es
     Left err  -> throwError err
 
-infer :: AST -> Infer GType
+infer :: Form -> Infer GType
 infer (Expr pos ty ex) = case ex of
   Lit lit -> return $ case lit of
     LInt{} -> typeInt
@@ -262,7 +222,7 @@ infer (Expr pos ty ex) = case ex of
 
   Var x -> lookupEnv x
 
-  -- Function (Lambda [] e) -> arrow Void <$> infer e 
+
   Function (Lambda xs e) -> do
     let forall = Forall []
         nargs = map (\(Expr _ _ (Var n)) -> n) xs
@@ -309,9 +269,6 @@ unifies t1 t2 = throwError $ Mismatch t1 t2
 unifyMany :: [GType] -> [GType] -> Solve Subst
 unifyMany [] [] = return emptySubst
 unifyMany (t1 : ts1) (t2 : ts2) = do
-  -- (su1, cs1) <- unifies t1 t2
-  -- (su2, cs2) <- unifyMany (apply su1 ts1) (apply su1 ts2)
-  -- return (su2 `compose` su1, cs1 ++ cs2)
   su1 <- unifies t1 t2
   su2 <- unifyMany (apply su1 ts1) (apply su1 ts2)
   return $ su2 `compose` su1
@@ -323,72 +280,4 @@ solver (su, cs) = case cs of
   ((t1, t2) : cs0) -> do
     su1 <- unifies t1 t2
     solver (su1 `compose` su, apply su1 cs0)
-
--- infer :: TypeEnv -> AST -> Infer (Subst, GType)
--- infer env (Expr pos ty ex) = case ex of
---   Lit lit -> let
---     constType ty = return (emptySubst, ty)
---     in constType $ case lit of
---       LInt{} -> typeInt
---       LStr{} -> typeStr
---       LBool{} -> typeBool
---       LFloat{} -> typeFloat
---   Var x -> lookupEnv env x
---   Function (Lambda [] e) -> do
---     (_, ty) <- infer env e
---     return (emptySubst, arrow Void ty)
---   Function (Lambda x e) -> do
---     tvs <- mapM (const fresh) x
---     let tvargs = map (Forall []) tvs
---         nargs = map (\(Expr _ _ (Var n)) -> n) x
---         env' = foldl extend env $ zip nargs tvargs
-
---     (s', t') <- infer env' e
---     let targs = productMany $ apply s' tvs
---     return (s', targs `arrow` t')
-  
---   Apply e [] -> do
---     (s, t) <- infer env e
---     tv <- fresh
---     s <- unify t $ Void `arrow` tv
---     return (s, apply s tv)
---   Apply e1 e2 -> do
---     tv <- fresh
---     (s1, t1) <- infer env e1
---     (s2s, t2s) <- fmap unzip $ mapM (infer $ apply s1 env) e2
---     -- 这里应该逐一应用参数合一后的变换
---     -- 或者直接比两个 Production ?
---     let s2 = composeAll s2s
---     let t2 = productMany t2s
---     s3 <- unify (apply s2 t1) $ t2 `arrow` tv
---     return (s3 `compose` s2 `compose` s1, apply s3 tv)
-
---   Let (Expr _ _ (Var x)) e1 e2 -> do
---     (s1, t1) <- infer env e1
---     let env' = apply s1 env
---         t'   = generalize env' t1
---     (s2, t2) <- infer (env' `extend` (x, t')) e2
---     return (s1 `compose` s2, t2)
-
---   If cond tr fl -> do
---     (s1, t1) <- infer env cond
---     let env1 = apply s1 env
---     (s2, t2) <- infer env1 tr
---     (s3, t3) <- infer env1 fl
---     s4 <- unify t1 typeBool
---     s5 <- unify t2 t3
---     return (s5 `compose` s4 `compose` s3 `compose` s2 `compose` s1, apply s5 t2)
-  
---   Block b -> reducer env b emptySubst
---     -- 至少要保证 Block 中所有的 expr 都能与其它的成功合一
---     where reducer env [e] s = do
---             (s', t) <- infer env e
---             return (s `compose` s', t)
---           reducer env (e:es) s = do
---             (s', t) <- infer env e
---             let env' = apply s env
---             reducer env' es $ s `compose` s'
-
-
---   bad -> throwError $ Reserved "Not yet implemented: " bad
 

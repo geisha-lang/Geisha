@@ -17,7 +17,7 @@ import Geisha.AST
 import Geisha.Error
 import qualified Geisha.Lexer as L
 
-readExpr :: String -> ThrowsCompileErr [AST]
+readExpr :: String -> ThrowsCompileErr [Form]
 -- readExpr s = return <$> readOrThrow entry s
 readExpr = readOrThrow program
 
@@ -27,7 +27,7 @@ readOrThrow parser src = case parse parser "Geisha" src of
   Right res -> return res
 
 
-expr :: Parser AST
+expr :: Parser Form
 expr = lets <|> E.buildExpressionParser operatorTable factor'
 
 unOpTable = [ map prefix [ "+", "-" ] ]
@@ -40,14 +40,14 @@ binOpTable = map assocLefts [ [ "*", "/", "%" ],
 
 operatorTable = unOpTable ++ binOpTable
 
-binary :: String -> E.Assoc -> E.Operator String () Identity AST
+binary :: String -> E.Assoc -> E.Operator String () Identity Form
 binary tk = E.Infix $ do
   pos <- getPosition
   L.reservedOp tk
   let identOp = noType pos $ Var tk
   return (\lhs rhs -> noType pos $ Apply identOp [lhs, rhs])
 
-prefix :: String -> E.Operator String () Identity AST
+prefix :: String -> E.Operator String () Identity Form
 prefix tk = E.Prefix $ do
   pos <- getPosition
   L.reservedOp tk
@@ -62,12 +62,12 @@ factor = parseToAST (choice [ ifelse, string, number, try bool,
                               try lambda, identifier, list,
                               block ]) <|> L.parens expr
 
-factor' :: Parser AST
+factor' :: Parser Form
 factor' = do
   pos <- getPosition
   fun <- factor
   rest pos fun
-  where rest :: SourcePos -> AST -> Parser AST
+  where rest :: SourcePos -> Form -> Parser Form
         rest pos x = (do args <- L.parens $ L.commaSep expr
                          pos' <- getPosition
                          rest pos' . noType pos $ Apply x args) <|> return x
@@ -115,14 +115,14 @@ ifelse = do
   fl <- expr
   return $ If cond tr fl
 
-assignment :: Parser (AST, AST)
+assignment :: Parser (Form, Form)
 assignment = do
   var <- parseToAST identifier
   L.reservedOp "="
   rhs <- expr
   return (var, rhs)
 
-lets :: Parser AST
+lets :: Parser Form
 lets = do
   L.reserved "let"
   binds <- L.commaSep assignment
@@ -132,7 +132,7 @@ lets = do
     where lett (var, b@(Expr t pos1 exp1)) =
             Expr t pos1 . Let var b
 
-definition :: Parser AST
+definition :: Parser Form
 definition = getPosition >>= \pos -> Decl pos TSlot <$> do
   L.reserved "def"
   -- bind <- assignment
@@ -141,7 +141,7 @@ definition = getPosition >>= \pos -> Decl pos TSlot <$> do
   rhs <- expr
   return $ Define var rhs
 
-entry :: Parser AST
+entry :: Parser Form
 entry = try definition <|> try expr
 
 contents :: Parser a -> Parser a
@@ -151,7 +151,7 @@ contents p = do
   eof
   return r
 
-program :: Parser [AST]
+program :: Parser [Form]
 program = contents $ L.lineSep entry
 -- program = contents . many $ do
 --   e <- entry

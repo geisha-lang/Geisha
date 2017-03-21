@@ -27,13 +27,13 @@ liftThrows (Left err) = throwError err
 liftThrows (Right val) = return val
 -- liftCompileError :: Monad m => ExceptT E.CompileErr Codegen -> m a
 
-extractIdent :: AST -> E.ThrowsCompileErr String
-extractIdent (Expr _ _ (Var n)) = return n
-extractIdent bad                  = throwError . E.Default $ "Illegel indentifier: " ++ show bad
+extractIdent :: Form -> Maybe String
+extractIdent (Expr _ _ (Var n)) = Just n
+extractIdent bad                = Nothing
 
-topLevel :: AST -> ExceptT E.CompileErr LLVM ()
+topLevel :: Form -> ExceptT E.CompileErr LLVM ()
 topLevel (Decl _ _ (Define name (Expr _ _ (S.Function (Lambda args body))))) = do
-  args <- liftThrows $ mapM extractIdent args
+  Just args <- liftThrows $ mapM extractIdent args
   -- name <- liftThrows $ extractIdent name
   bls <- liftGen $ do
     entry <- addBlock entryBlockName
@@ -58,7 +58,7 @@ toSig = map $ \x -> (integer, AST.Name x)
 
 cons = ConstantOperand
 
-gen :: S.AST -> CodegenErrorT AST.Operand
+gen :: S.Form -> CodegenErrorT AST.Operand
 gen (S.Expr _ _ (S.Lit lit)) = return . cons $ case lit of
   LInt i      -> C.Int 32 i
   LFloat f    -> C.Float $ F.Double f
@@ -67,6 +67,12 @@ gen (S.Expr _ _ (S.Lit lit)) = return . cons $ case lit of
   -- return . cons . C.Float $ F.Double f
 -- gen (S.Expr _ _ (S.Integer i)) = return . cons $ C.Int 32 i
 gen (S.Expr _ _ (S.Var v)) = getVar v >>= load
+gen (S.Expr _ _ (S.Apply op [lhs, rhs]))
+  | fromMaybe False $ extractIdent op >>= (`M.member` binops) = do
+      f <- binops M.! extractIdent op
+      clhs <- gen lhs
+      crhs <- gen rhs
+      f clhs crhs
 gen (S.Expr _ _ (S.Apply fn args)) = do
   largs <- mapM gen args
   call (externf integer $ AST.Name fun) largs
@@ -85,7 +91,6 @@ gen (S.Expr _ _ (S.Apply fn args)) = do
 --       crhs <- gen r
 --       f clhs crhs
 --     Nothing -> throwError . E.Default $ "No such operator '" ++ op ++ "'"
-
 gen (S.Expr _ _ (S.Apply (S.Expr _ _ (S.Var "=")) [S.Expr _ _ (S.Var var), val])) = do
   a <- getVar var
   rhs <- gen val
@@ -134,7 +139,7 @@ gen ast = throwError . E.Default $ "Not implement yet: \n" ++ show ast
 liftIOError :: ExceptT String IO a -> IO a
 liftIOError = runExceptT >=> either fail return
 
-codegen :: AST.Module -> [S.AST] -> IO AST.Module
+codegen :: AST.Module -> [S.Form] -> IO AST.Module
 codegen mod fns = case newAST of
   Right newAST ->
     withContext $ \ctx ->
