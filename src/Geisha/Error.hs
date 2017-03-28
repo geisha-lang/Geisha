@@ -1,5 +1,6 @@
 module Geisha.Error (
     ThrowsCompileErr,
+    ThrowsTypeError,    
     IOThrowsError,
     CompileErr(..),
     TypeError(..),
@@ -14,12 +15,18 @@ import Geisha.AST
 
 type ThrowsCompileErr = Either CompileErr
 
+type ThrowsTypeError = Either TypeError
+
 type IOThrowsError = ExceptT CompileErr IO
 
 
 liftThrows :: ThrowsCompileErr a -> IOThrowsError a
 liftThrows (Left err) = throwError err
 liftThrows (Right val) = return val
+
+liftTypeError :: ThrowsTypeError a -> ThrowsCompileErr a
+liftTypeError (Left err) = throwError $ TypeError err
+liftTypeError (Right val) = return val
 
 data CompileErr = Parse ParseError
                 | Unbound String
@@ -31,7 +38,7 @@ data TypeError = Mismatch GType GType
                | NotFunction GType
                | NotInScope Name
                | InfiniteType Name GType
-               | Reserved String Expr
+               | Reserved String
                | BadTypeForm String Expr
                | UnificationMismatch [GType] [GType]
                deriving (Show)

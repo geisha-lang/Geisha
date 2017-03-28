@@ -15,7 +15,7 @@ import qualified LLVM.General.AST as AST
 
 import Geisha.Parser
 
-import Geisha.Codegen.Emit
+-- import Geisha.Codegen.Emit
 import Geisha.AST
 import Geisha.Codegen.LLVM
 
@@ -24,34 +24,35 @@ import Geisha.TypeInfer
 initModule :: AST.Module
 initModule = emptyModule "prelude"
 
-process :: AST.Module -> String -> IO (Maybe AST.Module)
-process modu src = case readExpr src of
-  Left err -> print err >> return Nothing
-  Right ex -> do
-    print ex
-    ast <- codegen modu ex
-    return $ Just ast
+-- process :: AST.Module -> String -> IO (Maybe AST.Module)
+-- process modu src = case readExpr src of
+--   Left err -> print err >> return Nothing
+--   Right ex -> do
+--     print ex
+--     ast <- codegen modu ex
+--     return $ Just ast
 
 
-processFile :: String -> IO (Maybe AST.Module)
-processFile fn = do
-  src <- readFile fn
-  let modu = emptyModule fn
-  process modu src
+-- processFile :: String -> IO (Maybe AST.Module)
+-- processFile fn = do
+--   src <- readFile fn
+--   let modu = emptyModule fn
+--   process modu src
 
 showType :: TypeEnv -> String -> IO ()
 showType env src = case readExpr src of
   Left err -> print err
   Right ast -> do
-    print ast
+    putStrLn . unlines $ map show ast
     case fmap fst . runInfer env . inferTop $ ast of
-      Right env -> print env
+      Right ast -> putStrLn . unlines $ map (show . formType) ast
       Left err  -> print err
 
 preludeEnv :: TypeEnv
-preludeEnv = envList [ ("+", Forall ["a"] $ arrow (product (TVar "a") (TVar "a")) (TVar "a")),
-                       ("=", Forall ["a"] $ arrow (product (TVar "a") (TVar "a")) Void),
-                       ("==", Forall ["a"] $ arrow (product (TVar "a") (TVar "a")) typeBool) ]
+preludeEnv = envList [ ("+", Forall ["a"] $ product (TVar "a") (TVar "a") `arrow` TVar "a")
+                     , ("=", Forall ["a"] $ product (TVar "a") (TVar "a") `arrow` Void)
+                     , ("==", Forall ["a"] $ product (TVar "a") (TVar "a") `arrow` typeBool)
+                     ]
 
 main :: IO ()
 main = do

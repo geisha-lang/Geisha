@@ -30,7 +30,7 @@ readOrThrow parser src = case parse parser "Geisha" src of
 expr :: Parser Form
 expr = lets <|> E.buildExpressionParser operatorTable factor'
 
-unOpTable = [ map prefix [ "+", "-" ] ]
+unOpTable  = [ map prefix [ "+", "-" ] ]
 binOpTable = map assocLefts [ [ "*", "/", "%" ],
                               [ "+", "-" ],
                               [ ">", "<", "==" ],
@@ -40,27 +40,35 @@ binOpTable = map assocLefts [ [ "*", "/", "%" ],
 
 operatorTable = unOpTable ++ binOpTable
 
-binary :: String -> E.Assoc -> E.Operator String () Identity Form
-binary tk = E.Infix $ do
+parseOpApply :: Name -> Parser ([Form] -> Form)
+parseOpApply tk = do
   pos <- getPosition
   L.reservedOp tk
   let identOp = noType pos $ Var tk
-  return (\lhs rhs -> noType pos $ Apply identOp [lhs, rhs])
+  return $ \es -> noType pos $ Apply identOp es
+
+binary :: String -> E.Assoc -> E.Operator String () Identity Form
+binary tk = E.Infix $ do
+  op <- parseOpApply tk
+  return (\lhs rhs -> op [lhs, rhs])
 
 prefix :: String -> E.Operator String () Identity Form
 prefix tk = E.Prefix $ do
-  pos <- getPosition
-  L.reservedOp tk
-  let identOp = noType pos $ Var tk
-  return (\e -> noType pos $ Apply identOp [e])
-  -- return . Expr pos $ UnExpr tk
+  op <- parseOpApply tk
+  return (\e -> op [e])
 
 parseToAST parser = getPosition >>= \pos -> noType pos <$> parser
 
 
-factor = parseToAST (choice [ ifelse, string, number, try bool,
-                              try lambda, identifier, list,
-                              block ]) <|> L.parens expr
+factor = parseToAST (choice [ ifelse,         -- | the `if` `else` expression
+                              string,         -- | the string literal
+                              number,         -- | number and float literal
+                              try bool,       -- | boolean value
+                              try lambda,     -- | lambda expression
+                              identifier,     -- | variable identifier
+                              list,           -- | list (vector/array)
+                              block           -- | a sequence of expression
+                            ]) <|> L.parens expr
 
 factor' :: Parser Form
 factor' = do
@@ -129,11 +137,11 @@ lets = do
   L.reserved "in"
   target <- expr
   return $ foldr lett target binds
-    where lett (var, b@(Expr t pos1 exp1)) =
-            Expr t pos1 . Let var b
+    where lett (var, b@(Expr (ASTNode t pos1 exp1))) =
+            Expr . ASTNode t pos1 . Let var b
 
 definition :: Parser Form
-definition = getPosition >>= \pos -> Decl pos TSlot <$> do
+definition = getPosition >>= \pos -> Decl . ASTNode pos TSlot <$> do
   L.reserved "def"
   -- bind <- assignment
   var <- L.identifier

@@ -5,11 +5,31 @@ import Text.Parsec.Pos
 
 type Name = String
 
-data Form = Expr SourcePos GType Expr
-         | Decl SourcePos GType Decl
-         deriving (Eq, Ord)
+data ASTNode a = ASTNode {
+  _pos  :: SourcePos,
+  _type :: GType,
+  _form :: a
+} deriving (Eq, Ord)
 
-noType pos = Expr pos TSlot
+
+data Form = Expr (ASTNode Expr)
+
+          | Decl (ASTNode Decl)
+          deriving (Eq, Ord)
+
+instance Show Form where
+  show (Expr (ASTNode _ _ exp))  = show exp
+  show (Decl (ASTNode _ _ decl)) = show decl
+
+formType (Expr (ASTNode _ ty _)) = ty
+formType (Decl (ASTNode _ ty _)) = ty
+
+
+-- data Form = Expr SourcePos GType Expr
+--           | Decl SourcePos GType Decl
+--          deriving (Eq, Ord)
+
+noType pos = Expr . ASTNode pos TSlot
 
 data GType = TSlot
            | Void
@@ -17,10 +37,11 @@ data GType = TSlot
            | TCon Name
            | TArr GType GType
            | TProd GType GType
+           | Forall [Name] GType
            deriving (Eq, Ord)
 
 showFact t@(TArr _ _ ) = "(" ++ show t ++ ")"
-showFact t          = show t
+showFact t             = show t
 
 instance Show GType where
   show TSlot = "_"
@@ -29,17 +50,13 @@ instance Show GType where
   show (TCon n) = n
   show (TArr l r)  = unwords [showFact l, "⇒", showFact r]
   show (TProd l r) = unwords [showFact l, "×", showFact r]
-
-data Scheme = Forall [Name] GType
-            deriving (Eq, Ord)
-
-instance Show Scheme where
   show (Forall names ty) = unwords $ quantifier ++ [show ty]
     where quantifier = if null names then [] else ["∀", intercalate ", " names, "."]
+-- data Scheme = Forall [Name] GType
+            -- deriving (Eq, Ord)
 
-instance Show Form where
-  show (Expr _ _ exp)  = show exp
-  show (Decl _ _ decl) = show decl
+-- instance Show Scheme where
+
 
 data Expr = Lit Lit
           | Var Name
