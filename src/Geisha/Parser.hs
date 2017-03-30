@@ -8,7 +8,8 @@ import qualified Text.Parsec.Expr as E
 import Text.Parsec.Prim (getPosition)
 import Text.ParserCombinators.Parsec (Parser, try, (<|>), (<?>),
                                       ParseError, choice,
-                                      SourcePos, parse, many, eof)
+                                      SourcePos, parse, many, eof,
+                                      sourceLine, sourceColumn)
 
 import Control.Applicative ((<$>))
 import Control.Monad.Except
@@ -17,7 +18,9 @@ import Geisha.AST
 import Geisha.Error
 import qualified Geisha.Lexer as L
 
-readExpr :: String -> ThrowsCompileErr [Form]
+posToLoc pos = Located (sourceLine pos) (sourceColumn pos)
+
+readExpr :: String -> ThrowsCompileErr [Syntax]
 -- readExpr s = return <$> readOrThrow entry s
 readExpr = readOrThrow program
 
@@ -27,7 +30,7 @@ readOrThrow parser src = case parse parser "Geisha" src of
   Right res -> return res
 
 
-expr :: Parser Form
+expr :: Parser Syntax
 expr = lets <|> E.buildExpressionParser operatorTable factor'
 
 unOpTable  = [ map prefix [ "+", "-" ] ]
@@ -40,24 +43,24 @@ binOpTable = map assocLefts [ [ "*", "/", "%" ],
 
 operatorTable = unOpTable ++ binOpTable
 
-parseOpApply :: Name -> Parser ([Form] -> Form)
+parseOpApply :: Name -> Parser ([Syntax] -> Syntax)
 parseOpApply tk = do
-  pos <- getPosition
+  pos <- posToLoc <$> getPosition
   L.reservedOp tk
-  let identOp = noType pos $ Var tk
-  return $ \es -> noType pos $ Apply identOp es
+  let identOp = bareExpr pos $ Var tk
+  return $ \es -> bareExpr pos $ Apply identOp es
 
-binary :: String -> E.Assoc -> E.Operator String () Identity Form
+binary :: String -> E.Assoc -> E.Operator String () Identity Syntax
 binary tk = E.Infix $ do
   op <- parseOpApply tk
   return (\lhs rhs -> op [lhs, rhs])
 
-prefix :: String -> E.Operator String () Identity Form
+prefix :: String -> E.Operator String () Identity Syntax
 prefix tk = E.Prefix $ do
   op <- parseOpApply tk
   return (\e -> op [e])
 
-parseToAST parser = getPosition >>= \pos -> noType pos <$> parser
+parseToAST parser = posToLoc <$> getPosition >>= \pos -> bareExpr pos <$> parser
 
 
 factor = parseToAST (choice [ ifelse,         -- | the `if` `else` expression
@@ -70,15 +73,15 @@ factor = parseToAST (choice [ ifelse,         -- | the `if` `else` expression
                               block           -- | a sequence of expression
                             ]) <|> L.parens expr
 
-factor' :: Parser Form
+factor' :: Parser Syntax
 factor' = do
-  pos <- getPosition
+  pos <- posToLoc <$> getPosition
   fun <- factor
   rest pos fun
-  where rest :: SourcePos -> Form -> Parser Form
+  where rest :: Loc -> Syntax -> Parser Syntax
         rest pos x = (do args <- L.parens $ L.commaSep expr
-                         pos' <- getPosition
-                         rest pos' . noType pos $ Apply x args) <|> return x
+                         pos' <- posToLoc <$> getPosition
+                         rest pos' . bareExpr pos $ Apply x args) <|> return x
 
 
 string :: Parser Expr
@@ -123,25 +126,25 @@ ifelse = do
   fl <- expr
   return $ If cond tr fl
 
-assignment :: Parser (Form, Form)
+assignment :: Parser (Syntax, Syntax)
 assignment = do
   var <- parseToAST identifier
   L.reservedOp "="
   rhs <- expr
   return (var, rhs)
 
-lets :: Parser Form
+lets :: Parser Syntax
 lets = do
   L.reserved "let"
   binds <- L.commaSep assignment
   L.reserved "in"
   target <- expr
   return $ foldr lett target binds
-    where lett (var, b@(Expr (ASTNode t pos1 exp1))) =
-            Expr . ASTNode t pos1 . Let var b
+    where lett (var, b@(Expr (Annotation pos1 t) exp1)) =
+            Expr (Annotation pos1 t) . Let var b
 
-definition :: Parser Form
-definition = getPosition >>= \pos -> Decl . ASTNode pos TSlot <$> do
+definition :: Parser Syntax
+definition = posToLoc <$> getPosition >>= \pos -> Decl (Annotation pos (Forall [] $ TSlot pos)) <$> do
   L.reserved "def"
   -- bind <- assignment
   var <- L.identifier
@@ -149,7 +152,7 @@ definition = getPosition >>= \pos -> Decl . ASTNode pos TSlot <$> do
   rhs <- expr
   return $ Define var rhs
 
-entry :: Parser Form
+entry :: Parser Syntax
 entry = try definition <|> try expr
 
 contents :: Parser a -> Parser a
@@ -159,7 +162,7 @@ contents p = do
   eof
   return r
 
-program :: Parser [Form]
+program :: Parser [Syntax]
 program = contents $ L.lineSep entry
 -- program = contents . many $ do
 --   e <- entry

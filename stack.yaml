@@ -5,7 +5,8 @@ packages:
 # - 'llvm-general-pure'
 # - 'llvm-general'
 extra-deps:
-  # - cabal-helper-0.6.3.1
+# - cabal-helper-0.6.3.1
 - llvm-general-pure-3.5.1.0
 - llvm-general-3.5.1.2
+# - cabal-helper-0.7.3.0
 resolver: lts-3.5

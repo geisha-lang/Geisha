@@ -20,6 +20,7 @@ import Geisha.AST
 import Geisha.Codegen.LLVM
 
 import Geisha.TypeInfer
+import Geisha.TypeInfer.Env
 
 initModule :: AST.Module
 initModule = emptyModule "prelude"
@@ -45,13 +46,17 @@ showType env src = case readExpr src of
   Right ast -> do
     putStrLn . unlines $ map show ast
     case fmap fst . runInfer env . inferTop $ ast of
-      Right ast -> putStrLn . unlines $ map (show . formType) ast
+      Right ast -> putStrLn . unlines $ map (show . syntaxType) ast
       Left err  -> print err
 
+arr = arrow NoLoc
+pro = product NoLoc
+
+var = TVar NoLoc
 preludeEnv :: TypeEnv
-preludeEnv = envList [ ("+", Forall ["a"] $ product (TVar "a") (TVar "a") `arrow` TVar "a")
-                     , ("=", Forall ["a"] $ product (TVar "a") (TVar "a") `arrow` Void)
-                     , ("==", Forall ["a"] $ product (TVar "a") (TVar "a") `arrow` typeBool)
+preludeEnv = envList [ ("+", Forall ["a"] $ pro (var "a") (var "a") `arr` var "a")
+                     , ("=", Forall ["a"] $ pro (var "a") (var "a") `arr` Void NoLoc)
+                     , ("==", Forall ["a"] $ pro (var "a") (var "a") `arr` typeBool NoLoc)
                      ]
 
 main :: IO ()

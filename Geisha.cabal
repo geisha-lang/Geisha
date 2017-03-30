@@ -22,6 +22,7 @@ library
                      , Geisha.Codegen.LLVM
                      , Geisha.Codegen.Primitive
                      , Geisha.TypeInfer
+                     , Geisha.TypeInfer.Env
   build-depends:       base >= 4.7 && < 5
                      , parsec
                      , mtl
