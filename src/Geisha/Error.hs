@@ -45,7 +45,10 @@ data TypeError = Mismatch GType GType
                | Reserved String
                | BadTypeForm String Expr
                | UnificationMismatch [GType] [GType]
-               deriving (Show)
+            --    deriving (Show)
+instance Show TypeError where
+    show (Mismatch tl tr) = "Type mismatch: " ++ show tl ++ " in " ++ show (getLoc tl) ++ " with " ++ show tr ++ " in " ++ show (getLoc tr)
+    show e = "Error"
 
 instance Show CompileErr where
     show (Parse err) = show err

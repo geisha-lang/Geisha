@@ -155,7 +155,7 @@ normalize (Forall _ body) = Forall (map snd ord) (normtype body)
 
 generalize :: TypeEnv -> GType -> Scheme
 generalize env t = Forall as t
-  where as = S.toList $ ftv t S.\\ ftv env
+  where as = S.toList $ ftv env S.\\ ftv t
 
 
 
@@ -252,8 +252,8 @@ infer (Expr anno@(Annotation pos ty) ex) =
   let typeNode :: Expr -> GType -> Infer (Syntax, GType)
       typeNode exp ty = do
         env <- ask
-        -- let cty = generalize env ty
-        let cty = Forall [] ty
+        let cty = generalize env ty
+        -- let cty = Forall [] ty
         return (Expr (anno { _type = cty }) exp, ty)
 
       withType = typeNode ex
@@ -294,14 +294,40 @@ infer (Expr anno@(Annotation pos ty) ex) =
 
 
     Let (Expr annov@(Annotation vpos vt) letv@(Var x)) e1 e2 -> do
-      env <- ask
       (e1, te1) <- infer e1
+      env <- ask
       -- let te1 = _type e1
       let sc = generalize env te1
       (lete, tlete) <- inEnv (x, sc) (infer e2)
       let ctlete = generalize env tlete
       return (Expr (anno { _type = ctlete }) $ Let (Expr (annov { _type = sc }) letv) e1 lete, tlete)
-    
+
+      -- (e1, sc) <- inferExpr e1
+      -- (lete, tlete) <- inEnv (x, sc) (infer e2)
+      -- env <- ask
+      -- let ctlete = generalize env tlete
+      -- return (Expr (anno { _type = ctlete }) $ Let (Expr (annov { _type = sc }) letv) e1 lete, tlete)
+
+      -- env <- ask
+      -- s <- get
+      -- case runInfer env $ infer e1 of
+      --   Right ((e1, ty1), c1) -> case runSolve c1 of
+      --     Left err    -> throwError err
+      --     Right subst -> do
+      --       put s
+      --       let env' = apply subst env
+      --       let sc = generalize env' $ apply subst ty1
+      --       (lete, tlete) <- inEnv (x, sc) $ local (apply subst) $ infer e2
+      --       let ctlete = generalize env' tlete
+      --       tell c1
+      --       return (Expr (anno { _type = ctlete }) $
+      --                 Let (Expr (annov { _type = sc }) letv)
+      --                   (apply subst e1)
+      --                   lete,
+      --               tlete)
+      --   Left err  -> throwError err
+
+
     If cond tr fl -> do
       (cond, tcond) <- infer cond
       (tr, ttr) <- infer tr

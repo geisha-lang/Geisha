@@ -25,6 +25,9 @@ type Name = String
 data Loc = NoLoc | Located Int Int
          deriving (Eq, Ord)
 
+instance Show Loc where
+  show NoLoc = "Unknown loc"
+  show (Located line col) = "line: " ++ show line ++ " col: " ++ show col
 
 class Locatable a where
   getLoc :: a -> Loc
