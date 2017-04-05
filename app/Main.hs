@@ -22,11 +22,13 @@ import Geisha.Codegen.LLVM
 import Geisha.TypeInfer
 import Geisha.TypeInfer.Env
 
+import Geisha.Compile
+
 initModule :: AST.Module
 initModule = emptyModule "prelude"
 
 -- process :: AST.Module -> String -> IO (Maybe AST.Module)
--- process modu src = case readExpr src of
+-- process modu src = case readSource src of
 --   Left err -> print err >> return Nothing
 --   Right ex -> do
 --     print ex
@@ -40,43 +42,21 @@ initModule = emptyModule "prelude"
 --   let modu = emptyModule fn
 --   process modu src
 
-showType :: TypeEnv -> String -> IO ()
-showType env src = case readExpr src of
-  Left err -> print err
-  Right ast -> do
-    putStrLn . unlines $ map show ast
-    case fmap fst . runInfer env . inferTop $ ast of
-      Right ast -> putStrLn . unlines $ map (show . syntaxType) ast
-      Left err  -> print err
-
-arr = arrow NoLoc
-pro = product NoLoc
-
-var = TVar NoLoc
-preludeEnv :: TypeEnv
-preludeEnv = envList [ ("+", Forall ["a"] $ pro (var "a") (var "a") `arr` var "a")
-                     , ("=", Forall ["a"] $ pro (var "a") (var "a") `arr` Void NoLoc)
-                     , ("==", Forall ["a"] $ pro (var "a") (var "a") `arr` typeBool NoLoc)
-                     ]
-
 main :: IO ()
 main = do
   args <- getArgs
-  if null args then
-    runInputT defaultSettings (loop initModule)
+  if null args then return ()
+    -- runInputT defaultSettings (loop initModule)
   else do
-    -- processFile $ head args
-    src <- readFile $ head args
-    showType preludeEnv src
-  where loop mod = do
-          minput <- getInputLine "ready> "
-          case minput of
-            Nothing -> outputStrLn "Goodbye."
-            Just input -> do
-              -- modn <- liftIO $ process mod input
-              -- case modn of
-              --   Just modn -> loop modn
-              --   Nothing -> loop mod
-              liftIO $ showType preludeEnv input
-              loop mod
+    res <- runCompileM . compileP $ head args 
+    case res of
+      Left err -> print err
+      Right r  -> return ()
+  -- where loop mod = do
+  --         minput <- getInputLine "ready> "
+  --         case minput of
+  --           Nothing -> outputStrLn "Goodbye."
+  --           Just input -> do
+  --             liftIO $ showType preludeEnv input
+  --             loop mod
 

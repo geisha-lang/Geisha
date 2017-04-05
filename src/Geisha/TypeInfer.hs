@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Geisha.TypeInfer where
 
@@ -9,6 +10,7 @@ import qualified Data.HashMap as M
 import qualified Data.Set as S
 
 import Data.List (nub, last)
+import Data.Maybe
 
 import Control.Applicative
 import Control.Monad.Reader
@@ -23,6 +25,7 @@ import Geisha.AST
 import Geisha.Error
 import Geisha.TypeInfer.Env
 -- type Name = String
+
 
 typeInt, typeBool, typeFloat, typeStr :: Loc -> GType
 typeInt loc   = TCon loc "Int"
@@ -48,12 +51,43 @@ class Substitutable a where
   apply :: Subst -> a -> a
   ftv   :: a -> S.Set Name
 
+instance Substitutable Syntax where
+  apply s (Expr a@(Annotation _ ty) ex) = Expr (a { _type = apply s ty }) $ apply s ex
+  apply s (Decl a@(Annotation _ ty) decl) = Decl (a { _type = apply s ty }) $ apply s decl
+  ftv (Expr (Annotation _ ty) _) = ftv ty
+  ftv (Decl (Annotation _ ty) _) = ftv ty
+
+instance Substitutable Expr where
+  apply s (List es) = List $ apply s es
+  apply s (Block es) = Block $ apply s es
+  apply s (Function (Lambda ps b)) = Function $ Lambda (apply s ps) (apply s b)
+  apply s (Let n v e) = Let (apply s n) (apply s v) (apply s e)
+  apply s (If cond tr tf) = If (apply s cond) (apply s tr) (apply s tf)
+  apply s (Apply f args) = Apply (apply s f) $ apply s args
+  apply _ e = e
+
+  ftv (List es) = ftv es
+  ftv (Block es) = ftv es
+  ftv (Function (Lambda ps b)) = ftv  ps `S.union` ftv  b
+  ftv (Let n v e) = ftv  n `S.union` ftv  v `S.union` ftv  e
+  ftv (If cond tr tf) = ftv  cond `S.union` ftv  tr `S.union` ftv  tf
+  ftv (Apply f args) = ftv  f `S.union` ftv  args
+  ftv _ = S.empty
+
+instance Substitutable Decl where
+  apply s (Define n syn) = Define n $ apply s syn
+  apply _ d = d
+  ftv (Define _ syn) = ftv syn
+  ftv t = S.empty
+
+
 instance Substitutable GType where
   apply _ v@(Void _)        = v
-  apply _ (TCon l a)        = TCon l a
+  apply _ c@(TCon l a)      = c
   apply s t@(TVar _ a)      = M.findWithDefault t a s
   apply s (TArr pos t1 t2)  = arrow pos (apply s t1) $ apply s t2
   apply s (TProd pos t1 t2) = product pos (apply s t1) $ apply s t2
+  apply _ t                 = t
 
   ftv (Void _) = S.empty
   ftv (TCon _ _) = S.empty
@@ -89,15 +123,15 @@ type Unifier = (Subst, [Constraint])
 
 type Solve = Except TypeError
 
-runSolve :: [Constraint] -> ThrowsTypeError Subst
-runSolve cs = runExcept $ solver (emptySubst, cs)
 
-runInfer :: TypeEnv -> Infer a -> ThrowsTypeError (a, [Constraint])
-runInfer env m = runExcept $ evalRWST m env initInfer
+runSolve :: (MonadError TypeError m) => [Constraint] -> m Subst
+runSolve cs = either throwError return . runExcept $ solver (emptySubst, cs)
+
+runInfer :: (MonadError TypeError m) => TypeEnv -> Infer a -> m (a, [Constraint])
+runInfer env m = either throwError return . runExcept $ evalRWST m env initInfer
 
 
 closeOver :: GType -> Infer Scheme
--- closeOver t@Forall{} = return t
 closeOver t = normalize $ generalize emptyEnv t
 
 -- | make type var names like `a0`, `a1` normalize to `a`, `b`
@@ -119,7 +153,6 @@ normalize (Forall _ body) = Forall (map snd ord) <$> normtype body
         normtype (TVar l a)    = case Prelude.lookup a ord of
           Just x -> return $ TVar l x
           Nothing -> throwError $ Reserved "type variable not in signature"
-normalize ty = return ty
 
 generalize :: TypeEnv -> GType -> Scheme
 generalize env t = Forall as t
@@ -159,31 +192,48 @@ instantiate (Forall as t) = do
 
 lookupEnv :: Name -> Infer GType
 lookupEnv x = do
+  scm <- lookupEnvScm x
+  instantiate scm
+
+lookupEnvScm :: Name -> Infer Scheme
+lookupEnvScm x = do
   (TypeEnv env) <- ask
+  -- fromMaybe (throwError $ NotInScope x) (M.lookup x env)
   case M.lookup x env of
     Nothing -> throwError $ NotInScope x
-    Just s  -> instantiate s
+    Just scm -> return scm
 
-inferTop :: [Syntax] -> Infer [Syntax]
+inferTop, inferDecls :: [Syntax] -> Infer ([Syntax], TypeEnv)
+
+-- | Add all declarations' name to Env
+-- | If no type specified, it will be `forall t. t`
 inferTop ds = do
   tvs <- mapM (fresh . getLoc . syntaxType) ds
   env <- ask
   let ns = map declName ds
       tvs' = map (generalize env) tvs
       pairs = zip ns tvs'
+  -- case runInfer env . inEnv' pairs $ inferDecls ds of
+  --   Left err -> throwError err
+  --   Right ((ds, e), cs) -> case runSolve cs of
+  --     Left err -> throwError err
+  --     Right subst -> return (apply subst ds, apply subst e)
   inEnv' pairs $ inferDecls ds
   where declName (Decl _ (Define n _)) = n
 
-inferDecls :: [Syntax] -> Infer [Syntax]
-inferDecls [] = return []
-inferDecls (Decl _ (Define name e) : ds) = do
-  (form, ty) <- inferExpr e
-  scm <- closeOver ty
-  fs <- inEnv (name, scm) $ inferDecls ds
-  return $ form : fs
+-- | Inference declarations with the env 
+inferDecls [] = do
+  env <- ask
+  return ([], env)
+inferDecls (Decl anno (Define name e) : ds) = do
+  (form, scm) <- inferExpr e
+  -- (form, ty) <- infer e
+  -- scm <- closeOver ty
+  (fs, env) <- inEnv (name, scm) $ inferDecls ds
+  return (Decl (anno { _type = scm }) (Define name form) : fs, env)
 
 
-inferExpr :: Syntax -> Infer (Syntax, GType)
+inferExpr :: Syntax -> Infer (Syntax, Scheme)
 inferExpr e = do
   env <- ask
   case runInfer env $ infer e of
@@ -191,20 +241,23 @@ inferExpr e = do
       Left err    -> throwError err
       Right subst -> do
         scm <- closeOver $ apply subst ty
-        return (Expr (anno { _type = scm }) ex, ty)
+        return (Expr (anno { _type = scm }) $ apply subst ex, scm)
     Left err  -> throwError err
+  -- (Expr anno ex, ty) <- infer e
+  -- subst <- runSolve cs
+  -- scm <- closeOver $ apply subst ty
+  -- return (Expr (anno { _type = scm }) ex, ty)
 
 infer :: Syntax -> Infer (Syntax, GType)
 infer (Expr anno@(Annotation pos ty) ex) =
-  let withType :: GType -> Infer (Syntax, GType)
-      withType ty = do
-        cty <- closeOver ty
-        return (Expr (anno { _type = cty }) ex, ty)
-      
-      typeNode :: Expr -> GType -> Infer (Syntax, GType)
+  let typeNode :: Expr -> GType -> Infer (Syntax, GType)
       typeNode exp ty = do
-        cty <- closeOver ty
+        env <- ask
+        -- let cty = generalize env ty
+        let cty = Forall [] ty
         return (Expr (anno { _type = cty }) exp, ty)
+
+      withType = typeNode ex
   
   in case ex of
     Lit lit -> withType $ ty pos
@@ -215,18 +268,20 @@ infer (Expr anno@(Annotation pos ty) ex) =
               LFloat{} -> typeFloat
 
     Var x -> do
-      ty <- lookupEnv x
-      withType ty
+      ty <- lookupEnvScm x
+      ins <- instantiate ty
+      return (Expr (anno { _type = ty }) ex, ins)
 
 
     Function (Lambda xs e) -> do
       let forall = Forall []
           nargs = map varName xs
-      tvs <- mapM (const $ fresh NoLoc) xs
+      tvs <- mapM (fresh . getLoc) xs
       let targs = productMany pos tvs
           scms  = map forall tvs
+          xs' = map (\(Expr anno ex, s) -> Expr (anno { _type = s }) ex) $ zip xs scms
       (body, tbody) <- inEnv' (zip nargs scms) (infer e)
-      typeNode (Function $ Lambda xs body) $ arrow pos targs tbody
+      typeNode (Function $ Lambda xs' body) $ arrow pos targs tbody
 
     
     Apply f args -> do
@@ -245,7 +300,7 @@ infer (Expr anno@(Annotation pos ty) ex) =
       -- let te1 = _type e1
       let sc = generalize env te1
       (lete, tlete) <- inEnv (x, sc) (infer e2)
-      ctlete <- closeOver tlete
+      let ctlete = generalize env tlete
       return (Expr (anno { _type = ctlete }) $ Let (Expr (annov { _type = sc }) letv) e1 lete, tlete)
     
     If cond tr fl -> do
@@ -276,6 +331,9 @@ bind a t
   | otherwise       = return $ M.singleton a t
 
 
+eqNoLoc :: GType -> GType -> Bool
+eqNoLoc (TArr _ l1 l2) (TArr _ r1 r2) = eqNoLoc l1 r1 && eqNoLoc l2 r2
+eqNoLoc (TProd _ l1 l2) (TProd _ r1 r2) = eqNoLoc l1 r1 && eqNoLoc l2 r2
 eqNoLoc l r = setLoc l NoLoc == setLoc r NoLoc
 
 unifies :: GType -> GType -> Solve Subst
@@ -284,12 +342,7 @@ unifies (TVar _ v) t                    = v `bind` t
 unifies t (TVar _ v)                    = v `bind` t
 unifies (TArr _ t1 t2) (TArr _ t3 t4)   = unifyMany [t1, t2] [t3, t4]
 unifies (TProd _ t1 t2) (TProd _ t3 t4) = unifyMany [t1, t2] [t3, t4]
-
--- | 这里大概，可以直接不管 Forall 里面？
--- | 然而我觉得可能还是要把 Forall 和一般的单态分开，只在 AST 标记里放一起
--- unifies (Forall _ t1) t2            = unifies t1 t2
--- unifies t1 (Forall _ t2)            = unifies t1 t2
-unifies t1 t2                       = throwError $ Mismatch t1 t2
+unifies t1 t2                           = throwError $ Mismatch t1 t2
 
 unifyMany :: [GType] -> [GType] -> Solve Subst
 unifyMany [] []                 = return emptySubst

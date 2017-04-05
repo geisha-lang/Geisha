@@ -1,9 +1,12 @@
+{-# LANGUAGE FlexibleContexts #-}
+
 module Geisha.Error (
     ThrowsCompileErr,
     ThrowsTypeError,    
     IOThrowsError,
     CompileErr(..),
     TypeError(..),
+    liftTypeError,
     liftThrows
 ) where
 
@@ -12,6 +15,7 @@ import Control.Monad.Except
 import Text.Parsec.Error (ParseError)
 
 import Geisha.AST
+import Geisha.AST.PrettyPrint
 
 type ThrowsCompileErr = Either CompileErr
 
@@ -24,9 +28,9 @@ liftThrows :: ThrowsCompileErr a -> IOThrowsError a
 liftThrows (Left err) = throwError err
 liftThrows (Right val) = return val
 
-liftTypeError :: ThrowsTypeError a -> ThrowsCompileErr a
-liftTypeError (Left err) = throwError $ TypeError err
-liftTypeError (Right val) = return val
+
+liftTypeError :: (MonadError CompileErr mc) => ThrowsTypeError a -> mc a
+liftTypeError = either (throwError . TypeError) return
 
 data CompileErr = Parse ParseError
                 | Unbound String

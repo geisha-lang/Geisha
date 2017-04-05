@@ -1,5 +1,6 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Geisha.Parser (
-    readExpr,
+    readSource,
 ) where
 
 import Data.Functor.Identity (Identity)
@@ -20,11 +21,11 @@ import qualified Geisha.Lexer as L
 
 posToLoc pos = Located (sourceLine pos) (sourceColumn pos)
 
-readExpr :: String -> ThrowsCompileErr [Syntax]
--- readExpr s = return <$> readOrThrow entry s
-readExpr = readOrThrow program
+readSource :: (MonadError CompileErr m) => String -> m [Syntax]
+-- readSource s = return <$> readOrThrow entry s
+readSource = readOrThrow program
 
-readOrThrow :: Parser a -> String -> ThrowsCompileErr a
+readOrThrow :: (MonadError CompileErr m) => Parser a -> String -> m a
 readOrThrow parser src = case parse parser "Geisha" src of
   Left err  -> throwError $ Parse err
   Right res -> return res

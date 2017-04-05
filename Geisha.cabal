@@ -15,14 +15,17 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
-  exposed-modules:     Geisha.Parser
+  exposed-modules:     Geisha.Compile
+                     , Geisha.Parser
                      , Geisha.Lexer
                      , Geisha.AST
+                     , Geisha.AST.PrettyPrint
                      , Geisha.Error
                      , Geisha.Codegen.LLVM
                      , Geisha.Codegen.Primitive
                      , Geisha.TypeInfer
                      , Geisha.TypeInfer.Env
+                     , Geisha.TypeInfer.Primitive
   build-depends:       base >= 4.7 && < 5
                      , parsec
                      , mtl
@@ -30,6 +33,7 @@ library
                      , hashmap
                      , llvm-general-pure
                      , llvm-general
+                     , pretty
   default-language:    Haskell2010
 
 executable Geisha-exe

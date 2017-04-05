@@ -3,6 +3,7 @@ module Geisha.TypeInfer.Env where
 import qualified Data.HashMap as M
 
 import Geisha.AST
+import Geisha.AST.PrettyPrint
 
 newtype TypeEnv = TypeEnv (M.Map Name Scheme)
                 deriving (Eq)
