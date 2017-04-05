@@ -131,28 +131,27 @@ runInfer :: (MonadError TypeError m) => TypeEnv -> Infer a -> m (a, [Constraint]
 runInfer env m = either throwError return . runExcept $ evalRWST m env initInfer
 
 
-closeOver :: GType -> Infer Scheme
-closeOver t = normalize $ generalize emptyEnv t
+closeOver :: GType -> Scheme
+closeOver = normalize . generalize emptyEnv
 
 -- | make type var names like `a0`, `a1` normalize to `a`, `b`
-normalize :: Scheme -> Infer Scheme
-normalize (Forall _ body) = Forall (map snd ord) <$> normtype body
+normalize :: Scheme -> Scheme
+normalize (Forall _ body) = Forall (map snd ord) (normtype body)
   where ord = zip (nub $ fv body) letters    -- generated type names
 
-        fv (Void _)        = []
+        fv (Void _)      = []
         fv (TCon _ _)    = []
         fv (TVar _ a)    = [a]
         fv (TArr _ a b)  = fv a ++ fv b
         fv (TProd _ a b) = fv a ++ fv b
 
-        normtype :: GType -> Infer GType
-        normtype t@Void{}      = return t
-        normtype (TArr l a b)  = liftA2 (TArr l) (normtype a) (normtype b)
-        normtype (TProd l a b) = liftA2 (TProd l) (normtype a) (normtype b)
-        normtype c@TCon{}      = return c
+        normtype t@Void{}      = t
+        normtype (TArr l a b)  = TArr l (normtype a) (normtype b)
+        normtype (TProd l a b) = TProd l (normtype a) (normtype b)
+        normtype c@TCon{}      = c
         normtype (TVar l a)    = case Prelude.lookup a ord of
-          Just x -> return $ TVar l x
-          Nothing -> throwError $ Reserved "type variable not in signature"
+          Just x -> TVar l x
+          Nothing -> error "type variable not in signature"
 
 generalize :: TypeEnv -> GType -> Scheme
 generalize env t = Forall as t
@@ -240,7 +239,7 @@ inferExpr e = do
     Right ((Expr anno ex, ty), cs) -> case runSolve cs of
       Left err    -> throwError err
       Right subst -> do
-        scm <- closeOver $ apply subst ty
+        let scm = closeOver $ apply subst ty
         return (Expr (anno { _type = scm }) $ apply subst ex, scm)
     Left err  -> throwError err
   -- (Expr anno ex, ty) <- infer e
@@ -325,8 +324,12 @@ occursCheck :: Substitutable a => Name -> a -> Bool
 occursCheck a t = a `S.member` ftv t
 
 bind :: Name -> GType -> Solve Subst
-bind a TVar{} = return emptySubst
+-- FUCK.... 打错一行卡了一个星期
+-- 太相信类型系统带来的正确性了，对于这种低级错误无能为力……
+-- MMP 害得我一个星期没有好好复习数学
+-- bind a TVar{} = return emptySubst
 bind a t
+  | t `eqNoLoc` TVar NoLoc a = return emptySubst
   | occursCheck a t = throwError $ InfiniteType a t
   | otherwise       = return $ M.singleton a t
 
@@ -338,6 +341,7 @@ eqNoLoc l r = setLoc l NoLoc == setLoc r NoLoc
 
 unifies :: GType -> GType -> Solve Subst
 unifies t1 t2 | eqNoLoc t1 t2           = return emptySubst
+unifies (TVar _ l) r@TVar{}             = l `bind` r
 unifies (TVar _ v) t                    = v `bind` t
 unifies t (TVar _ v)                    = v `bind` t
 unifies (TArr _ t1 t2) (TArr _ t3 t4)   = unifyMany [t1, t2] [t3, t4]
@@ -350,10 +354,11 @@ unifyMany (t1 : ts1) (t2 : ts2) = do
   su1 <- unifies t1 t2
   su2 <- unifyMany (apply su1 ts1) (apply su1 ts2)
   return $ su2 `compose` su1
-unifyMany t1 t2 = throwError $ UnificationMismatch t1 t2
+unifyMany t1 t2                 = throwError $ UnificationMismatch t1 t2
 
 compose :: Subst -> Subst -> Subst
 s1 `compose` s2 = M.map (apply s1) s2 `M.union` s1
+-- compose = M.union
 
 composeMany :: [Subst] -> Subst
 composeMany = foldl1 compose

@@ -89,7 +89,11 @@ prLit (LFloat f) =   PP.double f
 prLit (LStr b)   =   PP.doubleQuotes $ PP.text b
 
 prScheme                  ::  Scheme -> PP.Doc
-prScheme (Forall vars t)  =   PP.text "∀" <+>
-                              PP.hcat 
-                                (PP.punctuate PP.comma (map PP.text vars))
-                              PP.<+> PP.text "." <+> prType t
+prScheme (Forall vars t)  = if null vars
+                              then body
+                              else
+                                PP.text "∀" <+>
+                                PP.hsep 
+                                  (PP.punctuate PP.comma (map PP.text vars))
+                                PP.<+> PP.text "." <+> body
+  where body = prType t
