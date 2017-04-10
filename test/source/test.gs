@@ -32,6 +32,8 @@ def ha2 = (c) -> let a = if (true) c + 3 else 8 in a
 ;; Int -> Int
 def ha3 = c -> if (c == 10) c + 1 else c
 
+def proA = b -> cons(1, b)
+
 ;; Test global define environment
 ;; ((Int -> Int), Int) -> Int
 def main = (omg, holy) ->

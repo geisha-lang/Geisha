@@ -17,6 +17,7 @@ preludeEnv :: TypeEnv
 preludeEnv = envList [ ("+", Forall ["a"] $ pro (var "a") (var "a") `arr` var "a")
                        -- add
                      , ("add", Forall ["a"] $ var "a" `arr` (var "a" `arr` var "a"))
+                     , ("cons", Forall ["a", "b"] $ pro (var "a") (var "b") `arr` pro (var "a") (var "b"))
                      , ("=", Forall ["a"] $ pro (var "a") (var "a") `arr` Void NoLoc)
                      , ("==", Forall ["a"] $ pro (var "a") (var "a") `arr` typeBool NoLoc)
                      ]

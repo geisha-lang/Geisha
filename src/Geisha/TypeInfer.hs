@@ -258,9 +258,13 @@ infer (Expr anno@(Annotation pos ty) ex) =
               LFloat{} -> typeFloat
 
     Var x -> do
-      ty <- lookupEnvScm x
-      ins <- instantiate ty
-      return (Expr (anno { _type = ty }) ex, ins)
+      -- ty <- lookupEnvScm x
+      -- ins <- instantiate ty
+      env <- ask
+      ty <- lookupEnv x
+      -- let scm = generalize env ty
+      let scm = Forall [] ty
+      return (Expr (anno { _type = scm }) ex, ty)
 
 
     Function (Lambda xs e) -> do
