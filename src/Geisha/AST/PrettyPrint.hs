@@ -21,25 +21,19 @@ instance Show Expr where
 instance Show Lit where
   show = showLit
 instance Show Scheme where
-  -- show (Forall names ty) = unwords $ quantifier ++ [show ty]
-  --   where quantifier = if null names then [] else ["∀", intercalate ", " names, "."]
   show = showScheme
 
 instance Show Syntax where
-  -- show (Expr (Annotation _ ty) exp)  = show exp ++ ":" ++ show ty
-  -- show (Decl (Annotation _ ty) decl) = show decl ++ ":" ++ show ty
   show = PP.render . prSyntax
+
 instance Show Lambda where
   show (Lambda p b) = "(" ++ intercalate ", " (map show p) ++ ") -> " ++ show b
 
 instance Show Decl where
   show = PP.render . prDeclare
--- instance Show Syntax where
---   show (Expr (Annotation _ ty) exp)  = show exp ++ ":" ++ show ty
---   show (Decl (Annotation _ ty) decl) = show decl ++ ":" ++ show ty
 
 prSyntax :: Syntax -> PP.Doc
-prSyntax (Expr (Annotation _ ty) exp)  = prExpr exp <+> PP.text ":" <+> prScheme ty
+prSyntax (Expr (Annotation _ ty) exp)  = PP.parens (prExpr exp) <+> PP.text ":" <+> prScheme ty
 prSyntax (Decl (Annotation _ ty) (Define n syn)) = PP.text "def" <+> PP.text n <+> PP.text ":" <+> prScheme ty <+> PP.text "=" $$ PP.nest 2 (prSyntax syn)
 
 prDeclare (Define n syn) = PP.text "def" <+> PP.text n <+> PP.text "=" $$ PP.nest 2 (prSyntax syn)
@@ -47,7 +41,7 @@ prDeclare (Define n syn) = PP.text "def" <+> PP.text n <+> PP.text "=" $$ PP.nes
 prType             ::  GType -> PP.Doc
 prType (TVar _ n)    =   PP.text n
 prType (TCon _ c)    =   PP.text c
-prType (TArr _ t s)  =   prType t <+> PP.text "⇒" <+> prType s
+prType (TArr _ t s)  =   prParenType t <+> PP.text "⇒" <+> prType s
 prType (TProd _ t s) =   prParenType t <+> PP.text "×" <+> prParenType s
 prType Void{}       =   PP.text "∅"
 prType TSlot{}       =   PP.text "_"

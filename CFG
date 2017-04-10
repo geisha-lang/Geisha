@@ -1,0 +1,61 @@
+<Module> -> <ModuleDefs>
+
+<ModuleDefs> -> <ModuleDef> [<EOL> <ModuleDefs>]
+
+<ModuleDef> -> <AbsDef>
+             | <TypeDef>
+             | <ConceptDef>
+
+<AbsDef> -> def <Decl>
+
+<TypeDef> -> type <TypeCon> = <Type>
+
+<ConceptDef> -> concept { <LDecls> }
+
+<Decls> -> <Decl> <Sep> <Decls>
+         | <Decl>
+
+<Decl> -> <LDecl> = <Expr>
+
+<LDecl> -> <Ident> [: <Type>]
+
+<LDecls> -> <LDecl> [<SemiSep> <LDecls]
+
+<Type> -> <BType> [-> <Type>]
+
+<BType> -> [<BType>] <AType>
+
+<AType> -> <TypeCon>
+         | <TypeVar>
+         | <AType> * <AType>
+         | ( <Type> )
+
+<SemiExprs> -> <Expr> [<SemiSep> <SemiExprs>]
+
+<CommaExprs> -> <Expr> [<CommaSep> <CommaExprs>]
+
+<Expr> -> <Expr[0]> : <Type>
+        | <Expr[0]>
+
+<Expr[i]> -> <Expr[i+1]> [<Op(n, i)> <Expr[i+1]>] 
+           | <LExpr[i]>
+           | <RExpr[i]>
+
+<LExpr[i]> -> (<LExpr[i]> | <Expr[i+1]>) <Op(l, i)> <Expr[i+1]>
+
+<RExpr[i]> -> <Expr[i+1]> <Op(r, i)> (<RExpr[i]> | <Expr[i+1]>)
+
+<Expr[10]> -> (<Params>) [: Type] -> <Expr>
+            | <Ident>
+            | <Literal>
+            | let <Decls> in <Expr>
+            | if (<Expr>) <Expr> else <Expr>
+            | { <SemiExprs> }
+            | [ <CommaExprs> ]
+            | <Expr> ( <CommaExprs> )
+
+<Params> -> <Ident> [: <Type>] [, <Params>]
+
+<SemiSep> -> ; | <EOL>
+
+<CommaSep> -> ,

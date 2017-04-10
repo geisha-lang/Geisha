@@ -16,7 +16,7 @@ add = ("+", Forall [] $ pro (TCon NoLoc "Int") (TCon NoLoc "Int") `arr` TCon NoL
 preludeEnv :: TypeEnv
 preludeEnv = envList [ ("+", Forall ["a"] $ pro (var "a") (var "a") `arr` var "a")
                        -- add
-                     , ("add", Forall ["a"] $ var "a" `arr` var "a" `arr` var "a")
+                     , ("add", Forall ["a"] $ var "a" `arr` (var "a" `arr` var "a"))
                      , ("=", Forall ["a"] $ pro (var "a") (var "a") `arr` Void NoLoc)
                      , ("==", Forall ["a"] $ pro (var "a") (var "a") `arr` typeBool NoLoc)
                      ]

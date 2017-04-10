@@ -14,7 +14,7 @@ import Data.Maybe
 
 import Control.Applicative
 import Control.Monad.Reader
-import Control.Monad.RWS
+-- import Control.Monad.RWS
 import Control.Monad.State
 import Control.Monad.Except
 import Control.Monad.Identity
@@ -24,7 +24,6 @@ import Text.Parsec.Pos
 import Geisha.AST
 import Geisha.Error
 import Geisha.TypeInfer.Env
--- type Name = String
 
 
 typeInt, typeBool, typeFloat, typeStr :: Loc -> GType
@@ -112,10 +111,10 @@ instance Substitutable TypeEnv where
   apply s (TypeEnv e) = TypeEnv $ M.map (apply s) e
   ftv (TypeEnv e)     = ftv $ M.elems e
 
-newtype InferState = InferState { count :: Int }
-initInfer = InferState { count = 0 }
+data InferState = InferState { count :: Int, constraint :: [Constraint] }
+initInfer = InferState 0 []
 -- type Infer a = ExceptT TypeError (State Unique) a
-type Infer = RWST TypeEnv [Constraint] InferState (Except TypeError)
+type Infer = ReaderT TypeEnv (StateT InferState (Except TypeError))
 
 type Constraint = (GType, GType)
 type Unifier = (Subst, [Constraint])
@@ -128,7 +127,9 @@ runSolve :: (MonadError TypeError m) => [Constraint] -> m Subst
 runSolve cs = either throwError return . runExcept $ solver (emptySubst, cs)
 
 runInfer :: (MonadError TypeError m) => TypeEnv -> Infer a -> m (a, [Constraint])
-runInfer env m = either throwError return . runExcept $ evalRWST m env initInfer
+runInfer env m = do
+  (res, s) <- either throwError return . runExcept $ runStateT (runReaderT m env) initInfer
+  return (res, constraint s)
 
 
 closeOver :: GType -> Scheme
@@ -155,7 +156,7 @@ normalize (Forall _ body) = Forall (map snd ord) (normtype body)
 
 generalize :: TypeEnv -> GType -> Scheme
 generalize env t = Forall as t
-  where as = S.toList $ ftv env S.\\ ftv t
+  where as = S.toList $ ftv t S.\\ ftv env
 
 
 
@@ -170,7 +171,9 @@ fresh loc = do
 
 
 uni :: GType -> GType -> Infer ()
-uni tl tr = tell [(tl, tr)]
+uni tl tr = do
+  cs <- constraint <$> get 
+  modify $ \s -> s { constraint = cs ++ [(tl, tr)] }
 
 inEnv :: (Name, Scheme) -> Infer a -> Infer a
 inEnv (x, sc) m = do
@@ -212,11 +215,6 @@ inferTop ds = do
   let ns = map declName ds
       tvs' = map (generalize env) tvs
       pairs = zip ns tvs'
-  -- case runInfer env . inEnv' pairs $ inferDecls ds of
-  --   Left err -> throwError err
-  --   Right ((ds, e), cs) -> case runSolve cs of
-  --     Left err -> throwError err
-  --     Right subst -> return (apply subst ds, apply subst e)
   inEnv' pairs $ inferDecls ds
   where declName (Decl _ (Define n _)) = n
 
@@ -226,8 +224,6 @@ inferDecls [] = do
   return ([], env)
 inferDecls (Decl anno (Define name e) : ds) = do
   (form, scm) <- inferExpr e
-  -- (form, ty) <- infer e
-  -- scm <- closeOver ty
   (fs, env) <- inEnv (name, scm) $ inferDecls ds
   return (Decl (anno { _type = scm }) (Define name form) : fs, env)
 
@@ -242,10 +238,6 @@ inferExpr e = do
         let scm = closeOver $ apply subst ty
         return (Expr (anno { _type = scm }) $ apply subst ex, scm)
     Left err  -> throwError err
-  -- (Expr anno ex, ty) <- infer e
-  -- subst <- runSolve cs
-  -- scm <- closeOver $ apply subst ty
-  -- return (Expr (anno { _type = scm }) ex, ty)
 
 infer :: Syntax -> Infer (Syntax, GType)
 infer (Expr anno@(Annotation pos ty) ex) =
@@ -253,7 +245,6 @@ infer (Expr anno@(Annotation pos ty) ex) =
       typeNode exp ty = do
         env <- ask
         let cty = generalize env ty
-        -- let cty = Forall [] ty
         return (Expr (anno { _type = cty }) exp, ty)
 
       withType = typeNode ex
@@ -294,38 +285,16 @@ infer (Expr anno@(Annotation pos ty) ex) =
 
 
     Let (Expr annov@(Annotation vpos vt) letv@(Var x)) e1 e2 -> do
-      (e1, te1) <- infer e1
       env <- ask
-      -- let te1 = _type e1
-      let sc = generalize env te1
-      (lete, tlete) <- inEnv (x, sc) (infer e2)
-      let ctlete = generalize env tlete
-      return (Expr (anno { _type = ctlete }) $ Let (Expr (annov { _type = sc }) letv) e1 lete, tlete)
-
-      -- (e1, sc) <- inferExpr e1
-      -- (lete, tlete) <- inEnv (x, sc) (infer e2)
-      -- env <- ask
-      -- let ctlete = generalize env tlete
-      -- return (Expr (anno { _type = ctlete }) $ Let (Expr (annov { _type = sc }) letv) e1 lete, tlete)
-
-      -- env <- ask
-      -- s <- get
-      -- case runInfer env $ infer e1 of
-      --   Right ((e1, ty1), c1) -> case runSolve c1 of
-      --     Left err    -> throwError err
-      --     Right subst -> do
-      --       put s
-      --       let env' = apply subst env
-      --       let sc = generalize env' $ apply subst ty1
-      --       (lete, tlete) <- inEnv (x, sc) $ local (apply subst) $ infer e2
-      --       let ctlete = generalize env' tlete
-      --       tell c1
-      --       return (Expr (anno { _type = ctlete }) $
-      --                 Let (Expr (annov { _type = sc }) letv)
-      --                   (apply subst e1)
-      --                   lete,
-      --               tlete)
-      --   Left err  -> throwError err
+      (e1, te1) <- infer e1
+      cs <- constraint <$> get
+      case runSolve cs of
+        Left err  -> throwError err
+        Right sub -> do
+          let sc = generalize (apply sub env) (apply sub te1)
+          (lete, tlete) <- inEnv (x, sc) $ local (apply sub) (infer e2)
+          let ctlete = generalize env tlete
+          return (Expr (anno { _type = ctlete }) $ Let (Expr (annov { _type = sc }) letv) e1 lete, tlete) 
 
 
     If cond tr fl -> do

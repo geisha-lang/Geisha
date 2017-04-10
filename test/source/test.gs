@@ -26,7 +26,7 @@ def ha1 = c -> let a = c in {
 
 ;; Test if-else with let-in
 ;; Int -> Int
-def ha2 = c -> let a = if (c == 8) c + 3 else 8 in a
+def ha2 = (c) -> let a = if (true) c + 3 else 8 in a
 
 ;; Test if-else
 ;; Int -> Int
