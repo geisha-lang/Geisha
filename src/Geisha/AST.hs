@@ -15,7 +15,7 @@ module Geisha.AST (
   syntaxType
 ) where
 
-import Data.List
+import           Data.List
 -- import Text.Parsec.Pos
 
 -- import Geisha.AST.PrettyPrint
@@ -69,6 +69,7 @@ data GType = TSlot Loc
            | TCon Loc Name
            | TArr Loc GType GType
            | TProd Loc GType GType
+           | TComp Loc GType GType
           --  | Forall Loc [Name] GType
            deriving (Eq, Ord)
 
@@ -110,10 +111,10 @@ data Expr = Lit Lit
 
 data Decl = Define Name Syntax
           | Concept {
-            _name :: Name,
+            _name   :: Name,
             _bounds :: [Decl]
           }
-          | Inst Name 
+          | Inst Name
           deriving (Eq, Ord)
 
 data Lit = LInt Integer
@@ -125,7 +126,7 @@ data Lit = LInt Integer
 
 data Lambda = Lambda {
   params :: [Syntax],
-  body :: Syntax
+  body   :: Syntax
   -- closure :: Env
 } deriving (Eq, Ord)
 

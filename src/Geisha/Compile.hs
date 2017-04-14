@@ -6,33 +6,33 @@ module Geisha.Compile (
   runCompileM
 ) where
 
-import Control.Monad
-import Control.Monad.Except
-import Control.Monad.Trans
-import Control.Monad.State
+import           Control.Monad
+import           Control.Monad.Except
+import           Control.Monad.State
+import           Control.Monad.Trans
 
-import Geisha.Error
-import qualified Geisha.TypeInfer.Env as T
-import qualified Geisha.AST as AST
-import Geisha.AST.PrettyPrint
+import qualified Geisha.AST                 as AST
+import           Geisha.AST.PrettyPrint
+import           Geisha.Error
+import qualified Geisha.TypeInfer.Env       as T
 
 
 
 -- | Compiling chains
-import qualified Geisha.Parser as P
-import qualified Geisha.TypeInfer as TI
+import qualified Geisha.Parser              as P
+import qualified Geisha.TypeInfer           as TI
 
-import Geisha.TypeInfer.Primitive
+import           Geisha.TypeInfer.Primitive
 
 type CompileM = ExceptT CompileErr (StateT CompileState IO)
 
 data CompileState = CompileState {
-  _fname :: Maybe FilePath,
+  _fname   :: Maybe FilePath,
   _imports :: [FilePath],
   _exports :: [AST.Name],
-  _source :: Maybe String,
-  _tyEnv :: T.TypeEnv,
-  _AST :: SyntaxModule
+  _source  :: Maybe String,
+  _tyEnv   :: T.TypeEnv,
+  _AST     :: SyntaxModule
 } deriving (Show)
 
 newtype SyntaxModule = SyntaxModule {
@@ -46,7 +46,7 @@ newtype SyntaxModule = SyntaxModule {
 -- runExceptT :: ExceptT CompileErr (StateT CompileState IO) a -> StateT CompileState IO (Either CompileErr a)
 
 runCompileM :: CompileM a -> IO (Either CompileErr (a, CompileState))
-runCompileM c = do 
+runCompileM c = do
   (res, cs) <- flip runStateT initCompileState $ runExceptT c
   return $ case res of
     Left err -> throwError err
@@ -58,7 +58,9 @@ initCompileState = CompileState Nothing [] [] Nothing preludeEnv emptyModule
 
 
 compileP :: FilePath -> CompileM SyntaxModule
-compileP = openSrcFile >=> parseP >=> inferP
+compileP = openSrcFile
+       >=> parseP
+       >=> inferP
 
 openSrcFile :: FilePath -> CompileM String
 openSrcFile fpath = lift $ do
@@ -81,7 +83,7 @@ inferP (SyntaxModule decls) = do
   ((ast, env), cs) <- liftTypeError $ TI.runInfer env . TI.inferTop $ decls
   let modu = SyntaxModule ast
   modify $ \s -> s { _AST = modu }
-  liftIO . putStrLn . unlines . map show $ ast 
+  liftIO . putStrLn . unlines . map show $ ast
   -- liftIO . putStrLn . unlines . map (show . AST.syntaxType) $ ast
   liftIO . print $ cs
   liftIO $ print env
