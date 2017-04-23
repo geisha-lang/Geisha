@@ -82,7 +82,7 @@ inferP (SyntaxModule decls) = do
   env <- gets _tyEnv
   ((ast, env), cs) <- liftTypeError $ TI.runInfer env . TI.inferTop $ decls
   let modu = SyntaxModule ast
-  modify $ \s -> s { _AST = modu }
+  modify $ \s -> s { _AST = modu, _tyEnv = env }
   liftIO . putStrLn . unlines . map show $ ast
   -- liftIO . putStrLn . unlines . map (show . AST.syntaxType) $ ast
   liftIO . print $ cs

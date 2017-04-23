@@ -1,8 +1,8 @@
-{-# LANGUAGE FlexibleContexts #-}
-
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 module Geisha.Error (
     ThrowsCompileErr,
-    ThrowsTypeError,    
+    ThrowsTypeError,
     IOThrowsError,
     CompileErr(..),
     TypeError(..),
@@ -10,12 +10,12 @@ module Geisha.Error (
     liftThrows
 ) where
 
-import Control.Monad.Except
+import           Control.Monad.Except
 
-import Text.Parsec.Error (ParseError)
+import           Text.Parsec.Error      (ParseError)
 
-import Geisha.AST
-import Geisha.AST.PrettyPrint
+import           Geisha.AST
+import           Geisha.AST.PrettyPrint
 
 type ThrowsCompileErr = Either CompileErr
 
@@ -35,7 +35,7 @@ liftTypeError = either (throwError . TypeError) return
 data CompileErr = Parse ParseError
                 | Unbound String
                 | Default String
-                | BadSpecialForm String Expr
+                | BadSpecialForm String Syntax
                 | TypeError TypeError
 
 data TypeError = Mismatch GType GType

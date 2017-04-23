@@ -1,50 +1,66 @@
 module Geisha.Codegen.Emit where
 
-import Control.Applicative
-import Control.Monad
-import Control.Monad.Except
-import Control.Monad.Trans
+import           Control.Applicative
+import           Control.Monad
+import           Control.Monad.Except
+import           Control.Monad.Trans
 
-import LLVM.General.AST as AST
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Float as F
+import           LLVM.General.AST                        as AST
+import qualified LLVM.General.AST.Constant               as C
+import qualified LLVM.General.AST.Float                  as F
 import qualified LLVM.General.AST.FloatingPointPredicate as FP
 
-import LLVM.General.Module
-import LLVM.General.Context
+import           LLVM.General.Context
+import           LLVM.General.Module
 
 -- import LLVM.General.PassManager
-import Data.Maybe
-import qualified Data.Map as M
+import qualified Data.Map                                as M
+import           Data.Maybe
 
-import Geisha.Codegen.LLVM
-import Geisha.Codegen.Primitive
-import Geisha.AST as S
-import qualified Geisha.Error as E
+import           Geisha.AST                              as S
+import           Geisha.Codegen.LLVM
+import           Geisha.Codegen.Primitive
+import qualified Geisha.Error                            as E
 
+type EmitM = ExceptT E.CompileErr LLVM
 
-liftThrows :: E.ThrowsCompileErr a -> ExceptT E.CompileErr LLVM a
+liftThrows :: E.ThrowsCompileErr a -> EmitM a
 liftThrows (Left err) = throwError err
 liftThrows (Right val) = return val
 -- liftCompileError :: Monad m => ExceptT E.CompileErr Codegen -> m a
 
-extractIdent :: Form -> Maybe String
-extractIdent (Expr (ASTNode _ _ (Var n))) = Just n
-extractIdent bad                          = Nothing
 
-topLevel :: Form -> ExceptT E.CompileErr LLVM ()
-topLevel (Decl (ASTNode _ _ (Define name (Expr (ASTNode _ _ (S.Function (Lambda args' body))))))) = do
-  let args = fromJust $ mapM extractIdent args'
+
+
+extractIdent :: Syntax -> String
+extractIdent (Expr _ (Var n)) = n
+extractIdent bad              = error $ "Not a identifier: " ++ show bad
+
+
+
+
+
+
+
+
+
+
+
+topLevel :: Syntax -> EmitM ()
+topLevel defe@(Decl anno (Define name (S.Function (Lambda args' body)))) = do
+  let args = map extractIdent args'
+  (targs, tret) <- liftThrows $ getFunctionType defe
+  let sigs = zip targs $ map AST.Name args
   -- name <- liftThrows $ extractIdent name
   bls <- liftGen $ do
     entry <- addBlock entryBlockName
     setBlock entry
-    forM_ args $ \a -> do
-      var <- alloca integer
+    forM_ sigs $ \(ty, a) -> do
+      var <- alloca ty
       store var . local $ AST.Name a
       assignVar a var
     gen body >>= ret
-  lift $ define integer name (toSig args) bls
+  lift $ define tret name sigs bls
 
 topLevel prog = blks >>= lift . define integer "main" []
   where blks = liftGen $ do
@@ -79,7 +95,7 @@ gen (S.Expr (S.ASTNode _ _ exp)) = genExp exp
     genExp (S.Apply fn args) = do
       largs <- mapM gen args
       call (externf integer $ AST.Name fun) largs
-      where (S.Var fun)) = fn
+      where (S.Var fun) = fn
 
     -- gen (S.BinExpr "=" (S.Var var)) val)) = do
     --   a <- getVar var
@@ -94,19 +110,19 @@ gen (S.Expr (S.ASTNode _ _ exp)) = genExp exp
     --       crhs <- gen r
     --       f clhs crhs
     --     Nothing -> throwError . E.Default $ "No such operator '" ++ op ++ "'"
-    genExp (S.Apply (S.Var "=") [S.Expr (S.ASTNode _ _ (S.Var var), val])) = do
+    genExp (S.Apply (S.Var "=") [S.Expr (S.ASTNode _ _ (S.Var var)), val]) = do
       a <- getVar var
       rhs <- gen val
       store a rhs
       return rhs
 
-    genExp (S.Block exps)) = loop exps
+    genExp (S.Block exps) = loop exps
       where loop [e] = gen e
             loop (e:es) = do
               gen e
               loop es
 
-    genExp (S.If cond tr fl)) = do
+    genExp (S.If cond tr fl) = do
       ifthen <- addBlock "if.then"
       ifelse <- addBlock "if.else"
       ifexit <- addBlock "if.exit"
@@ -128,7 +144,7 @@ gen (S.Expr (S.ASTNode _ _ exp)) = genExp exp
       setBlock ifexit
       phi double [(trval, ifthen), (flval, ifelse)]
 
-    genExp (S.Let a b c)) = case a of
+    genExp (S.Let a b c) = case a of
       (S.Expr (S.ASTNode _ _ (S.Var a))) -> do
         i <- alloca double
         val <- gen b

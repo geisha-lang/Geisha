@@ -2,26 +2,29 @@
 
 module Geisha.Codegen.LLVM where
 
-import Data.String
-import Data.List
-import Data.Function
+import           Data.Function
+import           Data.List
+import           Data.String
 
-import Control.Monad.State
-import Control.Applicative
-import Control.Monad.Except
+import           Control.Applicative
+import           Control.Monad.Except
+import           Control.Monad.State
 
-import LLVM.General.AST as AST
-import LLVM.General.AST.Global
-import qualified LLVM.General.AST.Constant as C
+import           LLVM.General.AST                        as AST
+import qualified LLVM.General.AST.Constant               as C
+import           LLVM.General.AST.Global
 
-import qualified LLVM.General.AST.CallingConvention as CC
+import qualified LLVM.General.AST.CallingConvention      as CC
 import qualified LLVM.General.AST.FloatingPointPredicate as FP
 
-import qualified Data.Map as M
-import Data.Map ((!))
+import           Data.Map                                ((!))
+import qualified Data.Map                                as M
 
-import Geisha.AST as S (GType (..))
-import qualified Geisha.Error as E
+import           Geisha.AST                              as S (GType (..),
+                                                               Scheme (..),
+                                                               Syntax,
+                                                               syntaxType)
+import qualified Geisha.Error                            as E
 
 instance IsString Name where
   fromString = Name . fromString
@@ -33,19 +36,19 @@ type Names = M.Map String Int
 type Blocks = M.Map Name BlockState
 data CodegenState = CodegenState {
   currentBlock :: Name,
-  blocks :: Blocks,
-  symtable :: SymbolTable,
-  blockCount :: Int,
-  count :: Word,
-  names :: Names,
-  errors :: [E.CompileErr]
+  blocks       :: Blocks,
+  symtable     :: SymbolTable,
+  blockCount   :: Int,
+  count        :: Word,
+  names        :: Names,
+  errors       :: [E.CompileErr]
 } deriving Show
 
 
 data BlockState = BlockState {
-  idx :: Int,
+  idx   :: Int,
   stack :: [Named Instruction],
-  term :: Maybe (Named Terminator)
+  term  :: Maybe (Named Terminator)
 } deriving Show
 
 newtype Codegen a = Codegen { runCodegen :: State CodegenState a }
@@ -109,6 +112,30 @@ integer = IntegerType 32
 
 -- convertType _ = error "Type havent been implement"
 
+getFunctionType :: Syntax -> E.ThrowsCompileErr ([Type], Type)
+getFunctionType stx = case syntaxType stx of
+  Forall [] (TArr loc targs tret) -> do
+    targsList <- toArgsList targs
+    tret <- convertType tret
+    return (targsList, tret)
+
+  where toArgsList :: GType -> E.ThrowsCompileErr [Type]
+        toArgsList (TProd _ lt rt) = do
+          ty <- convertType lt
+          rts <- toArgsList rt
+          return $ ty : rts
+        toArgsList ty = do
+          ty <- convertType ty
+          return [ty]
+
+getExprType :: Syntax -> E.ThrowsCompileErr Type
+getExprType exp = case syntaxType exp of
+  Forall [] ty -> convertType ty
+
+convertType :: GType -> E.ThrowsCompileErr Type
+convertType (TCon _ con) = return $ case con of
+    "Int" -> integer
+    "Float" -> double
 
 
 define :: Type -> String -> [(Type, Name)] -> [BasicBlock] -> LLVM ()
