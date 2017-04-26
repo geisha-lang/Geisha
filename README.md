@@ -1,6 +1,6 @@
 # Geisha
 
-Strict, with ML-like HM type system.
+<del> Just a toy </del> A strict language with ML-like HM type system.
 
 ## Hello World
 
@@ -20,6 +20,14 @@ def main = () -> helloWorld()
 - [Implementing a JIT Compiled Language with Haskell and LLVM](http://www.stephendiehl.com/llvm/)
 
 - [Essentials of Compilation](https://github.com/jsiek/Essentials-of-Compilation)
+
+## Schedule
+
+- <del>Parser</del>
+
+- <del>Type inference</del>
+
+- LLVM IR generation
 
 ## LICENSE
 
