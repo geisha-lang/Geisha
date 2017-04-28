@@ -1,22 +1,23 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module Geisha.Parser (readSource) where
 
-import           Data.Functor.Identity (Identity)
+import           Data.Functor.Identity         (Identity)
 
-import qualified Text.Parsec.Expr as E
-import           Text.Parsec.Prim (getPosition)
-import           Text.ParserCombinators.Parsec (Parser, try, (<|>), (<?>),
-                                                ParseError, choice, SourcePos,
-                                                parse, many, eof, sourceLine,
-                                                sourceColumn)
+import qualified Text.Parsec.Expr              as E
+import           Text.Parsec.Prim              (getPosition)
+import           Text.ParserCombinators.Parsec (ParseError, Parser, SourcePos,
+                                                choice, eof, many, parse,
+                                                sourceColumn, sourceLine, try,
+                                                (<?>), (<|>))
 
-import           Control.Applicative ((<$>))
+import           Control.Applicative           ((<$>))
 import           Control.Monad.Except
 
 import           Geisha.AST
 import           Geisha.Error
-import qualified Geisha.Lexer as L
+import qualified Geisha.Lexer                  as L
 
 posToLoc pos = Located (sourceLine pos) (sourceColumn pos)
 
@@ -120,12 +121,14 @@ block = Block <$> L.braces (L.stmtSep expr)
 
 lambda :: Parser Expr
 lambda = do
-  params <- (L.parens . L.commaSep $ parseToAST identifier) <|> (return <$> parseToAST
-                                                                              (try
-                                                                                 identifier))
-  L.reservedOp "->"
-  body <- expr
+  params <- try lambdaParams <|> return []
+  body <- lambdaRight
   return . Function $ Lambda params body
+
+  where
+    lambdaRight = L.reservedOp "->" >> expr
+    lambdaParams = (L.parens . L.commaSep $ parseToAST identifier)
+                   <|> (return <$> parseToAST (try identifier))
 
 ifelse :: Parser Expr
 ifelse = do
