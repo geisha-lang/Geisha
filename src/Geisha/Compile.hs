@@ -11,18 +11,19 @@ import           Control.Monad.Except
 import           Control.Monad.State
 import           Control.Monad.Trans
 
-import qualified Geisha.AST                 as AST
+import qualified Geisha.AST             as AST
 import           Geisha.AST.PrettyPrint
 import           Geisha.Error
-import qualified Geisha.TypeInfer.Env       as T
+import qualified Geisha.Form            as F
+import qualified Geisha.Type.Env        as T
 
 
 
 -- | Compiling chains
-import qualified Geisha.Parser              as P
-import qualified Geisha.TypeInfer           as TI
+import qualified Geisha.Parser          as P
+import qualified Geisha.TypeInfer       as TI
 
-import           Geisha.TypeInfer.Primitive
+import           Geisha.Type.Primitive
 
 type CompileM = ExceptT CompileErr (StateT CompileState IO)
 
@@ -35,11 +36,7 @@ data CompileState = CompileState {
   _AST     :: SyntaxModule
 } deriving (Show)
 
-newtype SyntaxModule = SyntaxModule {
-  _decls :: [AST.Syntax]
-} deriving (Show)
-
-
+type SyntaxModule = [AST.Syntax]
 -- mapExceptT :: (m (Either e a) -> n (Either e' b)) -> ExceptT e m a -> ExceptT e' n b
 -- flip runStateT initCompileState ::
 --   StateT CompileState IO (Either CompileErr a) -> IO ((Either CompileErr a), CompileState)
@@ -52,9 +49,8 @@ runCompileM c = do
     Left err -> throwError err
     Right a  -> return (a, cs)
 
-emptyModule = SyntaxModule []
 
-initCompileState = CompileState Nothing [] [] Nothing preludeEnv emptyModule
+initCompileState = CompileState Nothing [] [] Nothing preludeEnv []
 
 
 compileP :: FilePath -> CompileM SyntaxModule
@@ -73,18 +69,21 @@ openSrcFile fpath = lift $ do
 
 parseP :: String -> CompileM SyntaxModule
 parseP src = do
-  mod <- SyntaxModule <$> P.readSource src
+  mod <- P.readSource src
   lift . modify $ \s -> s { _AST = mod }
   return mod
 
 inferP :: SyntaxModule -> CompileM SyntaxModule
-inferP (SyntaxModule decls) = do
+inferP decls = do
   env <- gets _tyEnv
   ((ast, env), cs) <- liftTypeError $ TI.runInfer env . TI.inferTop $ decls
-  let modu = SyntaxModule ast
+  let modu = ast
   modify $ \s -> s { _AST = modu, _tyEnv = env }
   liftIO . putStrLn . unlines . map show $ ast
   -- liftIO . putStrLn . unlines . map (show . AST.syntaxType) $ ast
   liftIO . print $ cs
   liftIO $ print env
   return modu
+
+formalizeP :: SyntaxModule -> CompileM F.FormEnv
+formalizeP decls = return F.emptyEnv

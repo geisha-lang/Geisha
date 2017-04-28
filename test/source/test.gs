@@ -12,11 +12,11 @@ def fuck = a -> a + 5
 
 ;; Test let-in
 ;; Void -> Int
-def wtd = () -> let twoB = 3 in twoB
+def wtd = -> let twoB = 3 in twoB
 
 ;; Test let-in with block
 ;; Void -> Int
-def hahah = () -> let a = 3 in { a }
+def hahah = -> let a = 3 in { a }
 
 ;; Int -> Int
 def ha1 = c -> let a = c in {

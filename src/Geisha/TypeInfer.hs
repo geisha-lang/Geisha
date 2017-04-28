@@ -1,24 +1,25 @@
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts      #-}
+{-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TypeSynonymInstances  #-}
 
 module Geisha.TypeInfer where
 
-import           Prelude hiding (product)
-import qualified Data.HashMap as M
-import qualified Data.Set as S
-import           Data.List (last, nub)
-import           Data.Maybe
 import           Control.Applicative
 import           Control.Monad.Reader
+import qualified Data.HashMap           as M
+import           Data.List              (last, nub)
+import           Data.Maybe
+import qualified Data.Set               as S
+import           Prelude                hiding (product)
 -- import Control.Monad.RWS
-import           Control.Monad.State
 import           Control.Monad.Except
 import           Control.Monad.Identity
-import           Text.Parsec.Pos
+import           Control.Monad.State
 import           Geisha.AST
 import           Geisha.Error
-import           Geisha.TypeInfer.Env
+import           Geisha.Type.Env
+import           Geisha.Type.Subst
 
 typeInt, typeBool, typeFloat, typeStr :: Loc -> GType
 typeInt loc = TCon loc "Int"
@@ -38,87 +39,6 @@ productMany :: Loc -> [GType] -> GType
 productMany loc [] = Void loc
 productMany loc ts = setLoc (foldl1 (TProd loc) ts) loc
 
-type Subst = M.Map Name GType
-
-emptySubst :: Subst
-emptySubst = M.empty
-
-class Substitutable a where
-  apply :: Subst -> a -> a
-  ftv :: a -> S.Set Name
-
-instance Substitutable Syntax where
-  apply s (Expr a@(Annotation _ ty) ex) =
-    Expr (a { _type = apply s ty }) $
-      apply s ex
-  apply s (Decl a@(Annotation _ ty) decl) =
-    Decl (a { _type = apply s ty }) $
-      apply s decl
-  ftv (Expr (Annotation _ ty) _) =
-    ftv ty
-  ftv (Decl (Annotation _ ty) _) =
-    ftv ty
-
-instance Substitutable Expr where
-  apply s (List es) = List $ apply s es
-  apply s (Block es) = Block $ apply s es
-  apply s (Function (Lambda ps b)) =
-    Function $ Lambda (apply s ps) (apply s b)
-  apply s (Let n v e) = Let (apply s n) (apply s v) (apply s e)
-  apply s (If cond tr tf) =
-    If (apply s cond) (apply s tr) (apply s tf)
-  apply s (Apply f args) =
-    Apply (apply s f) $ apply s args
-  apply _ e = e
-  ftv (List es) = ftv es
-  ftv (Block es) = ftv es
-  ftv (Function (Lambda ps b)) =
-    ftv ps `S.union` ftv b
-  ftv (Let n v e) = ftv n `S.union` ftv v `S.union` ftv e
-  ftv (If cond tr tf) = ftv cond `S.union` ftv tr `S.union` ftv tf
-  ftv (Apply f args) = ftv f `S.union` ftv args
-  ftv _ = S.empty
-
-instance Substitutable Decl where
-  apply s (Define n syn) =
-    Define n $ apply s syn
-  apply _ d = d
-  ftv (Define _ syn) = ftv syn
-  ftv t = S.empty
-
-instance Substitutable GType where
-  apply _ v@(Void _) = v
-  apply _ c@(TCon l a) = c
-  apply s t@(TVar _ a) = M.findWithDefault t a s
-  apply s (TArr pos t1 t2) =
-    arrow pos (apply s t1) $ apply s t2
-  apply s (TProd pos t1 t2) =
-    product pos (apply s t1) $ apply s t2
-  apply _ t = t
-  ftv (Void _) = S.empty
-  ftv (TCon _ _) = S.empty
-  ftv (TVar _ a) = S.singleton a
-  ftv (TArr _ t1 t2) = ftv t1 `S.union` ftv t2
-  ftv (TProd _ t1 t2) = ftv t1 `S.union` ftv t2
-
-instance Substitutable Scheme where
-  apply s (Forall as t) = Forall as $ apply s' t
-    where
-      s' = foldr M.delete s as
-  ftv (Forall as t) = ftv t S.\\ S.fromList as
-
-instance Substitutable Constraint where
-  apply s (t1, t2) = (apply s t1, apply s t2)
-  ftv (t1, t2) = ftv t1 `S.union` ftv t2
-
-instance Substitutable a =>
-         Substitutable [a] where
-  apply = fmap . apply
-  ftv = foldr (S.union . ftv) S.empty
-
-instance Substitutable TypeEnv where
-  apply s (TypeEnv e) = TypeEnv $ M.map (apply s) e
-  ftv (TypeEnv e) = ftv $ M.elems e
 
 data InferState = InferState { count :: Int, constraint :: [Constraint] }
 
@@ -128,6 +48,11 @@ initInfer = InferState 0 []
 type Infer = ReaderT TypeEnv (StateT InferState (Except TypeError))
 
 type Constraint = (GType, GType)
+
+instance Substitutable Constraint where
+  apply s (t1, t2) = (apply s t1, apply s t2)
+  ftv (t1, t2) = ftv t1 `S.union` ftv t2
+
 
 type Unifier = (Subst, [Constraint])
 
@@ -222,7 +147,6 @@ lookupEnvScm x = do
 
 inferTop, inferDecls :: [Syntax] -> Infer ([Syntax], TypeEnv)
 -- | Add all declarations' name to Env | If no type specified, it will be
--- `forall t. t`
 inferTop ds = do
   tvs <- mapM (fresh . getLoc . syntaxType) ds
   env <- ask
@@ -235,7 +159,7 @@ inferTop ds = do
     declName (Decl _ (Define n _)) =
       n
 
--- | Inference declarations with the env 
+-- | Inference declarations with the env
 inferDecls [] = do
   env <- ask
   return ([], env)

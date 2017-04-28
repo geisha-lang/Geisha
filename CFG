@@ -59,3 +59,12 @@
 <SemiSep> -> ; | <EOL>
 
 <CommaSep> -> ,
+
+
+Lexical defs -------
+
+ID -> [_$a-zA-Z][_$a-zA-Z0-9]*
+NUM -> [1-9][0-9]+
+FLOAT -> [1-9][0-9]+\.[0-9]+
+
+keys: def | let | in | if | else | ->

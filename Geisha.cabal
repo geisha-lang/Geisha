@@ -6,7 +6,7 @@ homepage:            https://github.com/nameoverflow/Geisha
 license:             WTFPL
 license-file:        LICENSE
 author:              Hcyue
-maintainer:          example@example.com
+maintainer:          i@hcyue.me
 copyright:           2017 Hcyue
 category:            Web
 build-type:          Simple
@@ -20,12 +20,14 @@ library
                      , Geisha.Lexer
                      , Geisha.AST
                      , Geisha.AST.PrettyPrint
+                     , Geisha.Form
                      , Geisha.Error
                      , Geisha.Codegen.LLVM
                      , Geisha.Codegen.Primitive
                      , Geisha.TypeInfer
-                     , Geisha.TypeInfer.Env
-                     , Geisha.TypeInfer.Primitive
+                     , Geisha.Type.Subst
+                     , Geisha.Type.Env
+                     , Geisha.Type.Primitive
   build-depends:       base >= 4.7 && < 5
                      , parsec
                      , mtl
@@ -35,7 +37,7 @@ library
                      , llvm-general
                      , pretty
   default-language:    Haskell2010
-
+  extensions:          MultiParamTypeClasses
 executable Geisha-exe
   hs-source-dirs:      app
   main-is:             Main.hs

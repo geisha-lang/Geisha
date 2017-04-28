@@ -1,28 +1,21 @@
 module Main where
 
-import Prelude hiding (product)
-import Control.Monad
-import Control.Monad.State
-import Control.Monad.Trans
-import Control.Monad.Except
+import           Control.Monad
+import           Control.Monad.Except
+import           Control.Monad.State
+import           Control.Monad.Trans
+import           Prelude                  hiding (product)
 
-import System.Console.Haskeline
-import System.Environment
+import           System.Console.Haskeline
+import           System.Environment
 
 -- import qualified Data.HashMap as M
 
-import qualified LLVM.General.AST as AST
+import qualified LLVM.General.AST         as AST
 
-import Geisha.Parser
+import           Geisha.Codegen.LLVM
 
--- import Geisha.Codegen.Emit
-import Geisha.AST
-import Geisha.Codegen.LLVM
-
-import Geisha.TypeInfer
-import Geisha.TypeInfer.Env
-
-import Geisha.Compile
+import           Geisha.Compile
 
 initModule :: AST.Module
 initModule = emptyModule "prelude"
@@ -48,7 +41,7 @@ main = do
   if null args then return ()
     -- runInputT defaultSettings (loop initModule)
   else do
-    res <- runCompileM . compileP $ head args 
+    res <- runCompileM . compileP $ head args
     case res of
       Left err -> print err
       Right r  -> return ()

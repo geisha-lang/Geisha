@@ -2,13 +2,15 @@ module Geisha.Codegen.Primitive (
   binops
 ) where
 
-import LLVM.General.AST
-import LLVM.General.AST.Global
+import           LLVM.General.AST
+import           LLVM.General.AST.Global
 
-import qualified Data.Map as M
+import qualified Data.Map                as M
 
-import qualified Geisha.Codegen.LLVM as C
-import qualified Geisha.AST as S
+import qualified Geisha.AST              as S
+import qualified Geisha.Codegen.LLVM     as C
+
+type SymbolTag = (S.Name, S.GType)
 
 binops = M.fromList [
     ("+", fadd),
