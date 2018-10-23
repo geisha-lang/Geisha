@@ -2,6 +2,7 @@
 
 module Geisha.AST.PrettyPrint (showExpr, showType, showScheme) where
 
+import           Prelude hiding ((<>))
 import           Data.List
 import           Text.PrettyPrint as PP
 

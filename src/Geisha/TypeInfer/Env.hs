@@ -1,11 +1,11 @@
 module Geisha.TypeInfer.Env where
 
-import qualified Data.HashMap as M
+import qualified Data.HashMap.Strict as M
 
 import Geisha.AST
 import Geisha.AST.PrettyPrint
 
-newtype TypeEnv = TypeEnv (M.Map Name Scheme)
+newtype TypeEnv = TypeEnv (M.HashMap Name Scheme)
                 deriving (Eq)
 
 instance Show TypeEnv where

@@ -11,7 +11,7 @@ import System.Environment
 
 -- import qualified Data.HashMap as M
 
-import qualified LLVM.General.AST as AST
+import qualified LLVM.AST as AST
 
 import Geisha.Parser
 
@@ -48,7 +48,7 @@ main = do
   if null args then return ()
     -- runInputT defaultSettings (loop initModule)
   else do
-    res <- runCompileM . compileP $ head args 
+    res <- runCompileM . compileP $ head args
     case res of
       Left err -> print err
       Right r  -> return ()

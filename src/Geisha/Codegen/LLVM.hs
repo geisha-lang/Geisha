@@ -1,21 +1,25 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Geisha.Codegen.LLVM where
 
 import Data.String
 import Data.List
 import Data.Function
+import Data.ByteString.Char8 ()
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Char8 as BC
 
 import Control.Monad.State
 import Control.Applicative
 import Control.Monad.Except
 
-import LLVM.General.AST as AST
-import LLVM.General.AST.Global
-import qualified LLVM.General.AST.Constant as C
+import LLVM.AST as AST
+import LLVM.AST.Global
+import qualified LLVM.AST.Constant as C
 
-import qualified LLVM.General.AST.CallingConvention as CC
-import qualified LLVM.General.AST.FloatingPointPredicate as FP
+import qualified LLVM.AST.CallingConvention as CC
+import qualified LLVM.AST.FloatingPointPredicate as FP
 
 import qualified Data.Map as M
 import Data.Map ((!))
@@ -23,8 +27,8 @@ import Data.Map ((!))
 import Geisha.AST as S (GType (..))
 import qualified Geisha.Error as E
 
-instance IsString Name where
-  fromString = Name . fromString
+-- instance IsString Name where
+  -- fromString = Name . fromString
 
 type SymbolTable = M.Map String Operand
 
@@ -77,7 +81,7 @@ runLLVMOrThrow m l = case a of
   where (a, s) = runState (unLLVM l) m
 
 emptyModule :: String -> Module
-emptyModule label = defaultModule { moduleName = label }
+emptyModule label = defaultModule { moduleName = fromString label }
 
 addDefn :: Definition -> LLVM ()
 addDefn d = do
@@ -89,7 +93,7 @@ addDefn d = do
 ---------------
 
 double :: Type
-double = FloatingPointType 64 IEEE
+double = FloatingPointType DoubleFP
 
 integer :: Type
 integer = IntegerType 32
@@ -113,7 +117,7 @@ integer = IntegerType 32
 
 define :: Type -> String -> [(Type, Name)] -> [BasicBlock] -> LLVM ()
 define retty label argtys body = addDefn . GlobalDefinition $ functionDefaults {
-  name = Name label,
+  name = Name $ fromString label,
   parameters = ([Parameter ty nm [] | (ty, nm) <- argtys], False),
   returnType = retty,
   basicBlocks = body
@@ -151,12 +155,12 @@ addBlock blkname = do
       (qname, supply) = genName blkname nms
 
   modify $ \s -> s {
-    blocks = M.insert (Name qname) new bls,
+    blocks = M.insert (Name $ fromString qname) new bls,
     blockCount = ix + 1,
     names = supply
   }
 
-  return $ Name qname
+  return . Name $ fromString qname
 
 setBlock :: Name -> CodegenErrorT Name
 setBlock blkname = do

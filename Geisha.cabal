@@ -30,10 +30,12 @@ library
                      , parsec
                      , mtl
                      , containers
-                     , hashmap
-                     , llvm-general-pure
-                     , llvm-general
+                     -- , hashmap
+                     , unordered-containers
+                     , llvm-hs
+                     , llvm-hs-pure
                      , pretty
+                     , bytestring
   default-language:    Haskell2010
 
 executable Geisha-exe
@@ -44,8 +46,10 @@ executable Geisha-exe
                      , mtl
                      , Geisha
                      , haskeline
-                     , llvm-general-pure
-                     , llvm-general
+                     -- , llvm-general-pure
+                     -- , llvm-general
+                     , llvm-hs-pure
+                     , llvm-hs
   default-language:    Haskell2010
 
 test-suite Geisha-test

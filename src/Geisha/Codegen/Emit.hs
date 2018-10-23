@@ -5,15 +5,15 @@ import Control.Monad
 import Control.Monad.Except
 import Control.Monad.Trans
 
-import LLVM.General.AST as AST
-import qualified LLVM.General.AST.Constant as C
-import qualified LLVM.General.AST.Float as F
-import qualified LLVM.General.AST.FloatingPointPredicate as FP
+import LLVM.AST as AST
+import qualified LLVM.AST.Constant as C
+import qualified LLVM.AST.Float as F
+import qualified LLVM.AST.FloatingPointPredicate as FP
 
-import LLVM.General.Module
-import LLVM.General.Context
+import LLVM.Module
+import LLVM.Context
 
--- import LLVM.General.PassManager
+-- import LLVM.PassManager
 import Data.Maybe
 import qualified Data.Map as M
 

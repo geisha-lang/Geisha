@@ -5,7 +5,8 @@ packages:
 # - llvm-general-pure
 # - llvm-general
 extra-deps:
-- hashmap-1.3.2
-- llvm-general-pure-3.5.1.0
-- llvm-general-3.5.1.2
-resolver: lts-6.9
+- unordered-containers-0.2.9.0
+- llvm-hs-7.0.1
+- llvm-hs-pure-7.0.0
+
+resolver: lts-12.14

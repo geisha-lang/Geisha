@@ -1,4 +1,4 @@
-import qualified LLVM.General.ExecutionEngine as EE
+import qualified LLVM.ExecutionEngine as EE
 
 jit :: Context -> (EE.MCJIT -> IO a) -> IO a
 jit c = EE.withMCJIT c optlevel model ptrelim fastins

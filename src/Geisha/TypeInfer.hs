@@ -5,7 +5,7 @@
 module Geisha.TypeInfer where
 
 import           Prelude hiding (product)
-import qualified Data.HashMap as M
+import qualified Data.HashMap.Strict as M
 import qualified Data.Set as S
 import           Data.List (last, nub)
 import           Data.Maybe
@@ -38,7 +38,7 @@ productMany :: Loc -> [GType] -> GType
 productMany loc [] = Void loc
 productMany loc ts = setLoc (foldl1 (TProd loc) ts) loc
 
-type Subst = M.Map Name GType
+type Subst = M.HashMap Name GType
 
 emptySubst :: Subst
 emptySubst = M.empty
@@ -89,7 +89,7 @@ instance Substitutable Decl where
 instance Substitutable GType where
   apply _ v@(Void _) = v
   apply _ c@(TCon l a) = c
-  apply s t@(TVar _ a) = M.findWithDefault t a s
+  apply s t@(TVar _ a) = M.lookupDefault t a s
   apply s (TArr pos t1 t2) =
     arrow pos (apply s t1) $ apply s t2
   apply s (TProd pos t1 t2) =
@@ -235,7 +235,7 @@ inferTop ds = do
     declName (Decl _ (Define n _)) =
       n
 
--- | Inference declarations with the env 
+-- | Inference declarations with the env
 inferDecls [] = do
   env <- ask
   return ([], env)

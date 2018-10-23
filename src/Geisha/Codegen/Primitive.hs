@@ -2,8 +2,8 @@ module Geisha.Codegen.Primitive (
   binops
 ) where
 
-import LLVM.General.AST
-import LLVM.General.AST.Global
+import LLVM.AST
+import LLVM.AST.Global
 
 import qualified Data.Map as M
 
@@ -17,7 +17,7 @@ binops = M.fromList [
     ("/", fdiv)
   ]
 
-fbinInsr f a b = C.instr $ f NoFastMathFlags a b []
+fbinInsr f a b = C.instr $ f noFastMathFlags a b []
 
 fadd :: Operand -> Operand -> C.CodegenErrorT Operand
 fadd = fbinInsr FAdd
